@@ -5,6 +5,7 @@ description = "MILP-based scheduling for graduate visit days"
 requires-python = ">=3.9"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
+license-files = ["LICENSE"]
 keywords = ["scheduling", "milp", "pyomo", "optimization"]
 authors = [
   { name = "Dowling Lab" }

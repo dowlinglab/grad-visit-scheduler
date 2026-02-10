@@ -48,6 +48,11 @@ s.schedule_visitors(
 
 if s.has_feasible_solution():
     s.show_visitor_schedule(save_files=True)
+```
+
+Note: the `examples/` folder referenced above is included in the repository,
+but it is not packaged on PyPI. If you installed from PyPI, clone the repo
+to access the example files.
 
 ## Buildings
 
