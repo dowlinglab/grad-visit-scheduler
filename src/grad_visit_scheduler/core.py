@@ -1,0 +1,886 @@
+import pyomo.environ as pyo
+from pyomo.opt import SolverStatus, TerminationCondition
+from pyomo.core import Suffix
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from math import isnan
+import re
+from enum import Enum
+from collections import Counter
+
+class Solver(Enum):
+    HIGHS = 1
+    CBC = 2
+    GUROBI = 3
+    GUROBI_IIS = 4
+
+
+class FacultyStatus(Enum):
+    ACTIVE = "active"
+    LEGACY = "legacy"
+    EXTERNAL = "external"
+
+class Mode(Enum):
+    BUILDING_A_FIRST = 1
+    BUILDING_B_FIRST = 2
+    NO_OFFSET = 3
+
+def schedule_axes(figsize,nslots=7):
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    # 30 minute time slots, starting at 1:00 PM, + 10 minutes to
+    # draw the last tick
+    xticks = [i for i in range(60, 30*nslots + 60 + 10, 15)]
+    xlabels = [f"{t//60}:{t%60:02d}" for t in xticks]
+    ax.set_xticks(ticks=xticks, labels=xlabels)
+    for t in xticks:
+        ax.axvline(t, lw=1, alpha=0.3, color='b')
+    ax.spines[['left', 'top', 'right', 'bottom']].set_visible(False)
+    ax.set_xlabel("Time (PM)")
+    return ax
+    
+def slot2min(slot):
+    start, stop = slot.split("-")
+    a, b = start.split(":")
+    c, d = stop.split(":")
+    return 60*int(a) + int(b), 60*int(c) + int(d)
+
+def abbreviate_name(full_name):
+    """
+    Abbreviates a full name by replacing middle and last names with single initials.
+
+    Args:
+        full_name: The full name as a string (e.g., "John Michael Doe").
+
+    Returns:
+        The abbreviated name as a string (e.g., "John M. D.").
+        Returns the original name if only first name is provided.
+        Returns the first and last name initials if only 2 names are provided.
+        Returns an empty string if the input is empty or None.
+
+    Example usage (including the corrected case)
+        print(abbreviate_name("John Michael Doe"))      # Output: John M. D.
+        print(abbreviate_name("Jane Doe"))             # Output: Jane D.  (Corrected!)
+        print(abbreviate_name("John"))                # Output: John
+        print(abbreviate_name("John David Michael Doe")) # Output: John D. M. D.
+        print(abbreviate_name("John D. Michael"))        # Output: John M.
+        print(abbreviate_name(""))                     # Output: 
+        print(abbreviate_name(None))                   # Output:
+    
+    Code generated with Gemini
+    """
+    if not full_name:  # Check for empty or None input
+        return ""
+
+    name_parts = full_name.split()
+
+    if not name_parts:  # Check for empty after split
+        return ""
+
+    num_parts = len(name_parts)
+
+    if num_parts == 1:  # Only first name
+        return name_parts[0]
+    elif num_parts == 2:  # First and last name
+        return f"{name_parts[0]} {name_parts[1][0]}."
+    else:  # First, middle, and last names (or more middle names)
+        first_name = name_parts[0]
+        last_name = name_parts[-1]
+        middle_initials = ""
+
+        for part in name_parts[1:-1]:  # Iterate through middle names
+            middle_initials += part[0] + ". "
+
+        return f"{first_name} {middle_initials}{last_name[0]}."
+
+
+DEFAULT_COLOR_CYCLE = [
+    "#8ecae6",
+    "#90be6d",
+    "#f4a261",
+    "#e76f51",
+    "#bdb2ff",
+    "#ffd6a5",
+]
+BOX_ALPHA = 1.0
+
+class Scheduler:
+    """ Scheduler for meetings of visitors and faculty
+    
+    """
+    def __init__(
+        self,
+        times_by_building,
+        student_data_filename,
+        mode=Mode.NO_OFFSET,
+        solver=Solver.HIGHS,
+        include_legacy_faculty=False,
+        faculty_catalog=None,
+        faculty_aliases=None,
+    ):
+
+        # Faculty fields (adjust this depending on number of supplied preferences)
+        # Support up to 5 ranked faculty preferences
+        self.faculty_fields = [f"Prof{i}" for i in range(1, 6)]
+
+        # Area fields (adjust this depending on number of supplied preferences)
+        self.area_fields = ["Area1","Area2"]
+
+        # Process time data
+        self._set_time_data(times_by_building)
+        self.box_colors = self._build_box_colors()
+
+        self.external_faculty = {}
+        self.faculty_aliases = faculty_aliases or {}
+        # Load faculty data
+        if faculty_catalog is None:
+            self._load_default_faculty_data()
+        else:
+            self._load_faculty_catalog(faculty_catalog)
+        self.include_legacy_faculty = include_legacy_faculty
+
+        # Load student preferences csv file
+        self._load_student_preferences(student_data_filename)
+
+        # Create weights using defaults
+        self.update_weights()
+
+        # Save default solver and mode
+        self.mode = mode
+        self.solver = solver
+
+    def _set_time_data(self, times_by_building):
+
+        self.break_times = []
+        times_by_building_copy = {}
+        for i, (k, v) in enumerate(times_by_building.items()):
+            if k != "breaks":
+                times_by_building_copy[k] = v
+            else:
+                self.break_times = v
+
+        self.buildings = list(times_by_building_copy.keys())
+        if len(self.buildings) != 2:
+            raise ValueError("Run config must define exactly two buildings.")
+        self.building_a = self.buildings[0]
+        self.building_b = self.buildings[1]
+        self.number_time_slots = len(times_by_building_copy[self.buildings[0]])
+        self.time_slots = [i for i in range(1, self.number_time_slots+1) ]
+
+        if len(self.break_times) > 0:
+            for t in self.break_times:
+                if t not in self.time_slots:
+                    raise ValueError(t,"is not a valid break time")
+
+        for i, k in enumerate(times_by_building_copy):
+            if len(times_by_building_copy[k]) is not self.number_time_slots:
+                raise ValueError("Each building should have the same number of timeslots")
+
+        self.times_by_building = times_by_building_copy
+
+    def _build_box_colors(self):
+        return {
+            bldg: DEFAULT_COLOR_CYCLE[i % len(DEFAULT_COLOR_CYCLE)]
+            for i, bldg in enumerate(self.buildings)
+        }
+
+    def _load_student_preferences(self, filename):
+        """ Load datafile with student preferences
+        
+        """
+
+        student_data = pd.read_csv(filename)
+        if "Name" not in student_data.columns:
+            raise ValueError("Student preferences CSV must include a 'Name' column.")
+        # Detect which faculty preference columns are present (supports 4 or 5)
+        self.faculty_fields = [f for f in self.faculty_fields if f in student_data.columns]
+
+        #for index, row in student_data.iterrows():
+        #    print(row)
+
+        #student_data.head()
+        if student_data["Name"].duplicated().any():
+            dupes = student_data.loc[student_data["Name"].duplicated(), "Name"].tolist()
+            raise ValueError(f"Duplicate visitor names found: {dupes}")
+        self.student_data = student_data.set_index('Name').sort_index()
+        #self.student_data = student_data.sort_index()
+
+        # Loop over rows
+        for index, row in self.student_data.iterrows():
+            # Loop over faculty columns
+            for f in self.faculty_fields:
+                if f in self.student_data.columns and pd.notna(row[f]):
+                    name = str(row[f]).strip()
+                    # Graceful handling of empty / nan-like strings
+                    if not name or name.lower() in {"nan", "none", "na"}:
+                        continue
+                    # Drop faculty first name (after comma)
+                    name = name.split(",")[0].strip()
+                    # Apply aliases
+                    name = self.faculty_aliases.get(name, name)
+                    if name:
+                        # Drop faculty first name (after comma)
+                        row[f] = name
+
+        # Add legacy faculty if they appear in preferences (backwards compatibility)
+        self._add_legacy_faculty_from_preferences(include_all=self.include_legacy_faculty)
+        # Add external faculty if they appear in preferences
+        self._add_external_faculty_from_preferences()
+
+        # To start, no visitors have limited availability
+        self.specify_limited_student_availability({})
+
+    def _load_default_faculty_data(self):
+        self.legacy_faculty = {}
+        self.faculty = {}
+        self.external_faculty = {}
+
+        for i, bldg in enumerate(self.buildings):
+            name = f"Faculty {chr(65 + i)}"
+            self.faculty[name] = {
+                "building": bldg,
+                "avail": self.time_slots,
+                "areas": [f"Area{i + 1}"],
+                "room": f"{100 + i}",
+            }
+
+    def _load_faculty_catalog(self, catalog):
+        self.legacy_faculty = {}
+        self.faculty = {}
+        self.external_faculty = {}
+
+        for name, info in catalog.items():
+            status = str(info.get("status", FacultyStatus.ACTIVE.value)).lower()
+            if status not in {FacultyStatus.ACTIVE.value, FacultyStatus.LEGACY.value, FacultyStatus.EXTERNAL.value}:
+                raise ValueError(f"Invalid faculty status '{status}' for {name}.")
+            entry = {
+                "building": info.get("building", self.building_a),
+                "avail": self.time_slots,
+                "areas": info.get("areas", []),
+                "room": info.get("room", ""),
+            }
+            if status == FacultyStatus.LEGACY.value:
+                self.legacy_faculty[name] = entry
+            elif status == FacultyStatus.EXTERNAL.value:
+                # External faculty default to unavailable unless specified later
+                entry["avail"] = []
+                self.external_faculty[name] = entry
+            else:
+                self.faculty[name] = entry
+
+        # Merge external faculty into active faculty
+        for name, info in self.external_faculty.items():
+            if name not in self.faculty:
+                self.faculty[name] = dict(info)
+
+    def _add_legacy_faculty_from_preferences(self, include_all=False):
+        if not hasattr(self, "legacy_faculty"):
+            return
+        legacy_names = set(self.legacy_faculty.keys())
+        if include_all:
+            for name in legacy_names:
+                if name not in self.faculty:
+                    self.faculty[name] = dict(self.legacy_faculty[name])
+            return
+        names_in_prefs = set()
+        for f in self.faculty_fields:
+            if f in self.student_data.columns:
+                names_in_prefs.update(self.student_data[f].dropna().astype(str).str.split(",").str[0].str.strip())
+        for name in names_in_prefs:
+            if name in legacy_names and name not in self.faculty:
+                self.faculty[name] = dict(self.legacy_faculty[name])
+
+    def _add_external_faculty_from_preferences(self):
+        names_in_prefs = set()
+        for f in self.faculty_fields:
+            if f in self.student_data.columns:
+                names_in_prefs.update(self.student_data[f].dropna().astype(str).str.split(",").str[0].str.strip())
+        for name in names_in_prefs:
+            name = self.faculty_aliases.get(name, name)
+            if name and name not in self.faculty and name not in self.external_faculty and not self._is_legacy_faculty(name):
+                # Default to the first building with no availability; override via add_external_faculty if needed
+                self.external_faculty[name] = {
+                    'building': self.building_a,
+                    'avail': [],
+                    'areas': [],
+                    'room': ''
+                }
+        # Merge external faculty into active faculty
+        for name, info in self.external_faculty.items():
+            if name not in self.faculty:
+                self.faculty[name] = dict(info)
+
+    def add_external_faculty(self, name, building=None, room='', areas=None, available=None):
+        if areas is None:
+            areas = []
+        if available is None:
+            available = self.time_slots
+        if building is None:
+            building = self.building_a
+        self.external_faculty[name] = {
+            'building': building,
+            'avail': available,
+            'areas': areas,
+            'room': room
+        }
+        if name not in self.faculty:
+            self.faculty[name] = dict(self.external_faculty[name])
+
+    def _is_legacy_faculty(self, name):
+        return hasattr(self, "legacy_faculty") and name in self.legacy_faculty
+
+    def faculty_limited_availability(self, name, available):
+        if name not in self.faculty.keys():
+            raise ValueError(name,"is not a faculty member... check spelling")
+
+        for t in available:
+            if t not in self.time_slots:
+                raise ValueError(t,"is not a valid time slot")
+
+        self.faculty[name]['avail'] = available
+
+    def update_weights(self, 
+                       faculty_weight = {'Prof1': 4.0, 'Prof2': 3.0, 'Prof3': 2.0, 'Prof4': 1.0, 'Prof5': 0.5},
+                       area_weight = {'Area1': 1.0, 'Area2': 0.5},
+                       base_weight = 0.2):
+        """ Update weights for student preferences
+
+        Arguments:
+            faculty_weight: weight for faculty preferences
+            area_weight: weight for area preferences
+            base_weight: base weight for any meeting
+        """
+
+        if isinstance(faculty_weight, dict):
+            self.faculty_weights = {k: v for k, v in faculty_weight.items() if k in self.faculty_fields}
+        elif isinstance(faculty_weight, float) or isinstance(faculty_weight, int):
+            self.faculty_weights = {}
+            for f in self.faculty_fields:
+                self.faculty_weights[f] = faculty_weight
+        else:
+            raise ValueError("faculty_weight must be a float, int, or dict")
+
+        if isinstance(area_weight, dict):
+            self.area_weights = area_weight
+        elif isinstance(area_weight, float) or isinstance(area_weight, int):
+            self.area_weights = {}
+            for a in self.area_fields:
+                self.area_weights[a] = area_weight
+        else:
+            raise ValueError("area_weight must be a float, int, or dict")        
+
+        self.base_weight = base_weight
+
+        self._update_student_preferences() 
+
+    def _update_student_preferences(self):
+
+        # Store specific requests by student name
+        self.requests = {s:[] for s in self.student_data.index}
+
+        # Initialize dictionary containing preferences
+        self.student_preferences = {(s, f): self.base_weight for s in self.student_data.index for f in self.faculty.keys()}
+
+        # Loop over fields Prof1, Prof2, ...
+        for i, (k, v) in enumerate(self.faculty_weights.items()):
+            # Loop over all students extracting faculty choice for ProfX
+            for j, (s, f) in enumerate(self.student_data[k].to_dict().items()):
+                if pd.isna(f):
+                    continue
+                name = str(f).strip()
+                if not name or name.lower() in {"nan", "none", "na"}:
+                    continue
+                # Apply aliases just in case
+                name = self.faculty_aliases.get(name, name)
+                if name in self.faculty:
+                    self.student_preferences[s, name] = v
+                    self.requests[s].append(name)
+                else:
+                    print(f"Unknown faculty preference for {s}: '{name}'. Check spelling or add as external.")
+        
+        # Loop over area fields, Area1, Area2, ...
+        for i, (af, aw) in enumerate(self.area_weights.items()):
+
+            # Loop over all students extracting choice for AreaX
+            for j, (s, a) in enumerate(self.student_data[af].to_dict().items()):
+                if pd.isna(a):
+                    continue
+                # Loop over all faculty
+                for f in self.faculty.keys():
+                    
+                    # Check if faculty is in the area
+                    if a in self.faculty[f]["areas"]:
+                        self.student_preferences[(s, f)] += aw
+
+
+
+    def specify_limited_student_availability(self, students_available):
+        """ Specify is some students need to leave early
+
+        Arguments:
+            students_available: dictionary with student names as keys, list of times available as values
+        """
+
+        students_available
+
+        # Error checking
+        for i, (k,v) in enumerate(students_available.items()):
+            if k not in self.student_data.index:
+                raise ValueError(k,"is not a valid student name")
+                for j in v:
+                    if j not in self.time_slots:
+                        raise ValueError(j,"is not a valid time slot")
+
+        # Assume all other students are available for all time slots
+        for s, row in self.student_data.iterrows():
+            if s not in students_available.keys():
+                students_available[s] = self.time_slots
+
+        # Save in object
+        self.students_available = students_available
+
+    def plot_preferences(self):
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+
+        df = pd.DataFrame()
+        for key, val in self.student_preferences.items():
+            s, f = key
+            df.loc[s, f] = val
+
+        ax = sns.heatmap(df, cmap="crest", annot=True, square=True, cbar=False)
+        ax.set_ylabel('Prospective Graduate Students')
+        ax.set_xlabel('Faculty')
+        ax.set_title('Graduate Student Interview Preferences')
+        return fig, ax
+
+    def schedule_visitors(self, group_penalty=0.1, min_visitors=0, max_visitors=8, min_faculty=0, max_group=2, enforce_breaks=False, tee=False, run_name=''):
+        '''
+        Compute optimal schedule for graduate visit meetings
+        
+        Arguments:
+            group_penalty: negative utility for each student above one in a meeting
+            min_visitors: minimum number of visitors each faculty member must meet*
+            max_visitors: maximum number of visitors each faculty member may meet*
+            min_faculty: minimum number of faculty each visitor must meet
+            max_group: maximum size of a meeting group
+            
+            * only enforced for faculty who have availability
+
+            Note: 3*group_penalty also applies for the number of faculty who meeting with more than max_visitors - 2 students
+            This helps "spread the load" among faculty
+        '''
+
+        self.last_solve_params = {
+            "group_penalty": group_penalty,
+            "min_visitors": min_visitors,
+            "max_visitors": max_visitors,
+            "min_faculty": min_faculty,
+            "max_group": max_group,
+            "enforce_breaks": enforce_breaks,
+        }
+        self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
+        self._solve_model(tee)
+        self.run_name = run_name
+
+    def _build_model(self, group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks=False):
+        m = pyo.ConcreteModel()
+
+        # SETS
+        
+        m.faculty_available = []
+        for f in self.faculty.keys():
+            if len(self.faculty[f]["avail"]) > 0:
+                m.faculty_available.append(f)
+        
+        m.visitors = pyo.Set(initialize = self.student_data.index)
+        m.faculty = pyo.Set(initialize = m.faculty_available)
+        m.time = pyo.RangeSet(1, self.number_time_slots)
+        m.building_a = pyo.Set(
+            initialize=[f for f in m.faculty_available if self.faculty[f]["building"] == self.building_a]
+        )
+        m.building_b = pyo.Set(
+            initialize=[f for f in m.faculty_available if self.faculty[f]["building"] == self.building_b]
+        )
+        
+        # PARAMETERS
+        
+        # Penalty for meetings with more than one student at once
+        m.penalty = pyo.Param(initialize=group_penalty)
+
+        # student preferences
+        @m.Param(m.visitors, m.faculty)
+        def weights(m, s, f):
+            return self.student_preferences[(s, f)]
+
+        ## DECISION VARIABLES
+        
+        # y[s, f, t] == 1  <=>  visitor s meets faculty f at time t
+        m.y = pyo.Var(m.visitors, m.faculty, m.time, domain=pyo.Binary)
+        
+        # beyond_one_visitor == number of visitors in excess of one by faculty f at time t
+        m.beyond_one_visitor = pyo.Var(m.faculty, m.time, domain=pyo.PositiveReals)
+        
+        # facutly_too_many_meetings == 1  <=>  faculty f meets more than max_visitors - 2 students
+        m.faculty_too_many_meetings = pyo.Var(m.faculty, domain=pyo.Binary)
+
+        # bldg_a[s, t] == 1  <=>  visitor s in building A at time t
+        # same idea for building B
+        m.bldg_a = pyo.Var(m.visitors, m.time, domain=pyo.Binary)
+        m.bldg_b = pyo.Var(m.visitors, m.time, domain=pyo.Binary)
+        
+        if self.mode is Mode.NO_OFFSET or enforce_breaks:
+
+            if len(self.break_times) == 0:
+                raise ValueError("Must specify some break times!")
+            
+            m.break_options = self.break_times
+
+            m.faculty_breaks = pyo.Var(m.faculty, m.break_options, domain=pyo.Binary)
+
+        # EXPRESSIONS AND OBJECTIVE
+        
+        # utility is the total value of student preferences that are be accomodated in the schedule
+        @m.Expression(m.visitors)
+        def utility(m, s):
+            return sum(m.weights[s, f] * m.y[s, f, t] for t in m.time for f in m.faculty)
+
+        # assign a penalty if faculty meet more than one student at a time
+        @m.Expression(m.faculty)
+        def cost(m, f):
+            return sum(m.beyond_one_visitor[f, t] for t in m.time)
+
+        @m.Objective(sense=pyo.maximize)
+        def obj(m):
+            return sum(m.utility[s] for s in m.visitors) - m.penalty * sum(m.cost[f] for f in m.faculty) - 3*m.penalty * sum(m.faculty_too_many_meetings[f] for f in m.faculty)
+        
+        # CONSTRAINTS
+
+        # no meeting is possible if a faculty member is unavailable
+        @m.Constraint(m.visitors, m.faculty, m.time)
+        def availability(m, s, f, t):
+            return m.y[s, f, t] <= (1 if t in self.faculty[f]['avail'] else 0)
+        
+        @m.Constraint(m.faculty)
+        def min_visitors_constraint(m, f):
+            return sum(m.y[s, f, t] for s in m.visitors for t in m.time) >= min_visitors
+        
+        @m.Constraint(m.faculty)
+        def max_visitors_constraint(m, f):
+            return sum(m.y[s, f, t] for s in m.visitors for t in m.time) <= max_visitors
+    
+        # no student can be in more than one meeting at time
+        @m.Constraint(m.visitors, m.time)
+        def no_simultanous_meetings(m, s, t):
+            return sum(m.y[s, f, t] for f in m.faculty) <= 1
+
+        # all students meet a minimum number of faculty
+        @m.Constraint(m.visitors)
+        def min_faculty(m, s):
+            return sum(m.y[s, f, t] for f in m.faculty for t in m.time) >= np.min([min_faculty, len(self.students_available[s]) ])
+
+        # no student meets a faculty member more than once
+        @m.Constraint(m.visitors, m.faculty)
+        def meeting_each_prof_only_once(m, s, f):
+            return sum(m.y[s, f, t] for t in m.time) <= 1
+
+        # the number of students beyond one in each meeting
+        @m.Constraint(m.faculty, m.time)
+        def count_students_per_meeting(m, f, t):
+            return m.beyond_one_visitor[f, t] >= sum(m.y[s, f, t] for s in m.visitors) - 1
+
+        # number of faculty meeting more than max_visitors - 2 students
+        @m.Constraint(m.faculty)
+        def count_faculty_too_many_meetings(m, f):
+            return 2*m.faculty_too_many_meetings[f] >= sum(m.y[s, f, t] for s in m.visitors for t in m.time) - max_visitors + 2
+
+        @m.Constraint(m.faculty, m.time)
+        def max_group_size(m, f, t):
+            return sum(m.y[s, f, t] for s in m.visitors) <= max_group
+
+        # Determine if visitor is in building A
+        @m.Constraint(m.visitors, m.time)
+        def building_a_visits(m, s, t):
+            return sum(m.y[s, f, t] for f in m.building_a) <= m.bldg_a[s, t]
+        
+        # Determine if visitor is in building B
+        @m.Constraint(m.visitors, m.time)
+        def building_b_visits(m, s, t):
+            return sum(m.y[s, f, t] for f in m.building_b) <= m.bldg_b[s, t] 
+
+        # Move from building A to building B
+
+        if self.mode is Mode.BUILDING_A_FIRST:
+            @m.Constraint(m.visitors, m.time)
+            def building_a_starts_first(m, s, t):
+                if t == 1:
+                    return pyo.Constraint.Skip
+                return m.bldg_b[s, t - 1] + m.bldg_a[s, t] <= 1
+
+        if self.mode is Mode.BUILDING_B_FIRST:
+            @m.Constraint(m.visitors, m.time)
+            def building_b_starts_first(m, s, t):
+                if t == 1:
+                    return pyo.Constraint.Skip
+                return m.bldg_a[s, t - 1] + m.bldg_b[s, t] <= 1
+            
+        if self.mode is Mode.NO_OFFSET:
+            # Require empty timeslot to move from building A to building B
+            @m.Constraint(m.visitors, m.time)
+            def building_a_to_b_move(m, s, t):
+                if t == 1:
+                    return pyo.Constraint.Skip
+                return m.bldg_a[s, t - 1] + m.bldg_b[s, t] <= 1
+            
+            # Require empty timeslot to move from building B to building A
+            @m.Constraint(m.visitors, m.time)
+            def building_b_to_a_move(m, s, t):
+                if t == 1:
+                    return pyo.Constraint.Skip
+                return m.bldg_b[s, t - 1] + m.bldg_a[s, t] <= 1
+            
+        if self.mode is Mode.NO_OFFSET or enforce_breaks:
+            # Require at least one break for visitors within the configured break window
+            @m.Constraint(m.visitors)
+            def student_breaks(m, s):
+                return sum(m.y[s, f, t] for f in m.faculty for t in m.break_options) <= len(m.break_options) - 1
+
+        if self.mode is Mode.NO_OFFSET or enforce_breaks:
+            # Determine when faculty are in breaks
+            @m.Constraint(m.faculty, m.break_options)
+            def faculty_in_break(m, f, t):
+                return sum(m.y[s, f, t] for s in m.visitors) <= max_group*(1 - m.faculty_breaks[f,t])
+            
+            # Require at least one break for faculty
+            @m.Constraint(m.faculty)
+            def faculty_must_break(m, f):
+                if len(self.faculty[f]["avail"]) < len(m.time):
+                    # Faculty with limited availability do not get a break
+                    return pyo.Constraint.Skip
+                return sum(m.faculty_breaks[f,t] for t in m.break_options) >= 1
+
+        for s in m.visitors:
+            for t in m.time:
+                if t not in self.students_available[s]:
+                    for f in m.faculty:
+                        m.y[s,f,t].fix(0)
+
+        self.model = m
+        
+    def _solve_model(self, tee):
+
+        if self.solver is Solver.HIGHS:
+            opt = None
+            for solver_name in ("appsi_highs", "highs"):
+                candidate = pyo.SolverFactory(solver_name)
+                if candidate.available():
+                    opt = candidate
+                    break
+            if opt is None:
+                raise RuntimeError("No available HiGHS solver found. Install appsi_highs or highs.")
+
+        elif self.solver is Solver.CBC:
+            opt = pyo.SolverFactory('cbc')
+            # opt.options['ratio'] = 0.1 # set the ratio gap to 10%
+            
+        elif self.solver is Solver.GUROBI:
+            opt = pyo.SolverFactory('gurobi')
+            
+        elif self.solver is Solver.GUROBI_IIS:
+            
+            # Reference: https://github.com/Pyomo/pyomo/blob/main/examples/pyomo/suffixes/gurobi_ampl_iis.py
+            opt = pyo.SolverFactory('./ampl/gurobi_ampl', solver_io = 'nl')
+            
+            # tell gurobi to be verbose with output
+            opt.options['outlev'] = 1
+            
+            # tell gurobi to find an iis table for the infeasible model
+            opt.options['iisfind'] = 1  # tell gurobi to be verbose with output
+
+            # Create an IMPORT Suffix to store the iis information that will be returned by gurobi_ampl
+            self.model.iis = Suffix(direction=Suffix.IMPORT)
+        
+        results = opt.solve(self.model, tee=tee)
+        
+        if self.solver is Solver.GUROBI_IIS:
+            print("")
+            print("IIS Results")
+            for component, value in self.model.iis.items():
+                print(component.name + " " + str(value))
+        
+        self.results = results
+        self.last_termination_condition = results.solver.termination_condition
+        self.last_solver_status = results.solver.status
+
+    def has_feasible_solution(self):
+        if not hasattr(self, "results"):
+            return False
+        return self.last_termination_condition in [TerminationCondition.optimal, TerminationCondition.feasible]
+
+    def infeasibility_report(self):
+        if not hasattr(self, "results"):
+            return "No solver results available."
+        if self.has_feasible_solution():
+            return "Solution is feasible."
+        params = getattr(self, "last_solve_params", {})
+        min_visitors = params.get("min_visitors", 0)
+        min_faculty = params.get("min_faculty", 0)
+        max_group = params.get("max_group", 2)
+
+        faculty_available = [f for f in self.faculty.keys() if len(self.faculty[f]["avail"]) > 0]
+        num_faculty = len(faculty_available)
+        num_students = len(self.student_data.index)
+        total_faculty_capacity = sum(len(self.faculty[f]["avail"]) * max_group for f in faculty_available)
+        total_student_capacity = sum(len(self.students_available[s]) for s in self.student_data.index)
+        total_capacity = min(total_faculty_capacity, total_student_capacity)
+        total_min_student_meetings = sum(min(min_faculty, len(self.students_available[s])) for s in self.student_data.index)
+        total_min_faculty_meetings = num_faculty * min_visitors
+
+        per_faculty_violations = []
+        if min_visitors > 0:
+            for f in faculty_available:
+                max_meetings = len(self.faculty[f]["avail"]) * max_group
+                if max_meetings < min_visitors:
+                    per_faculty_violations.append((f, max_meetings))
+
+        lines = [
+            f"Termination: {self.last_termination_condition}, status: {self.last_solver_status}",
+            f"Students: {num_students}, Faculty (available): {num_faculty}, Time slots: {self.number_time_slots}",
+            f"Capacity (students): {total_student_capacity}, Capacity (faculty): {total_faculty_capacity}, Effective capacity: {total_capacity}",
+            f"Required meetings from students (min_faculty): {total_min_student_meetings}",
+            f"Required meetings from faculty (min_visitors): {total_min_faculty_meetings}",
+        ]
+        if total_min_student_meetings > total_capacity:
+            lines.append("Infeasibility likely: min_faculty requirement exceeds total capacity.")
+        if total_min_faculty_meetings > total_capacity:
+            lines.append("Infeasibility likely: min_visitors requirement exceeds total capacity.")
+        if per_faculty_violations:
+            sample = ", ".join([f"{f} (max {m})" for f, m in per_faculty_violations[:6]])
+            lines.append(f"Faculty with insufficient availability for min_visitors: {sample}")
+        lines.append("Try reducing min_faculty/min_visitors or loosening availability.")
+        return "\n".join(lines)
+
+    def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True):
+        if not self.has_feasible_solution():
+            raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
+        m = self.model
+        ax = schedule_axes(figsize=(12, 10), nslots=self.number_time_slots)
+
+        # Draw axes and ticks (background)
+        yticks = [-y for y, f in enumerate(m.faculty)]
+        ylabels = [f"{f} {self.faculty[f]['building']} ({sum(m.y[s, f, t]() for s in m.visitors for t in m.time):0.0f})" for f in m.faculty]
+        ax.set_yticks(yticks, labels=ylabels)
+        for f, label in zip(m.faculty, ax.get_yticklabels()):
+            if self._is_legacy_faculty(f):
+                label.set_color("red")
+        for y in yticks:
+            ax.axhline(y, lw=0.4, alpha=0.3, color='b')
+            
+        # Draw schedule (foreground)
+        for y, f in enumerate(m.faculty):
+            for t in self.faculty[f]["avail"]:
+                bldg = self.faculty[f]["building"]
+                start, stop = slot2min(self.times_by_building[bldg][t-1])
+                ax.plot(
+                    [start, stop],
+                    [-y, -y],
+                    lw=20,
+                    color=self.box_colors.get(bldg, "#cccccc"),
+                    alpha=BOX_ALPHA,
+                    solid_capstyle="butt",
+                )
+                students = [s for s in m.visitors if m.y[s, f, t]() >= 0.5]
+                if abbreviate_student_names:
+                    students = [abbreviate_name(s) for s in students]
+                students = '\n '.join(students)
+                if students:
+                    ax.text((start + stop)/2, -y, f"{students}", ha="center", va="center", fontsize=8)
+            
+        ax.set_title("Schedule by Faculty")
+        if save_files:
+            name = 'faculty_schedule'
+            if len(self.run_name) > 0:
+                name += '_' + self.run_name
+            plt.savefig(name + ".pdf")
+            plt.savefig(name + ".png")
+    
+    def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True):
+        if not self.has_feasible_solution():
+            raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
+        m = self.model
+        ax = schedule_axes(figsize=(12, 10), nslots=self.number_time_slots)
+        
+        # Draw axes and ticks (background)
+        students = [s for s in m.visitors]
+        if abbreviate_student_names:
+            students = [abbreviate_name(s) for s in students]
+        yticks = [-y for y, f in enumerate(students)]
+        ax.set_yticks(yticks, labels=students)
+        for y in yticks:
+            ax.axhline(y, lw=0.4, alpha=0.3, color='b')
+        
+        # Draw schedule (foreground)
+        for y, s in enumerate(m.visitors):
+            for t in m.time:
+                f = [f for f in m.faculty if m.y[s, f, t]() >= 0.5]
+                if f:
+                    f = f[0]
+                    bldg = self.faculty[f]["building"]
+                    start, stop = slot2min(self.times_by_building[bldg][t-1])
+                    ax.plot(
+                        [start, stop],
+                        [-y, -y],
+                        lw=20,
+                        color=self.box_colors.get(bldg, "#cccccc"),
+                        alpha=BOX_ALPHA,
+                        solid_capstyle="butt",
+                    )
+                    text_color = "red" if self._is_legacy_faculty(f) else "black"
+                    ax.text((start + stop)/2, -y, f"{f} ({bldg})", ha="center", va="center", fontsize=8, color=text_color)
+
+        ax.set_title("Schedule by Visitors")
+        if save_files:
+            name = 'visitor_schedule'
+            if len(self.run_name) > 0:
+                name += '_' + self.run_name
+            plt.savefig(name + ".pdf")
+            plt.savefig(name + ".png")
+
+    def export_visitor_docx(self, filename, **kwargs):
+        from .export import export_visitor_docx
+
+        return export_visitor_docx(self, filename, **kwargs)
+        
+    def show_utility(self):
+        m = self.model
+        y = pd.DataFrame.from_dict({f:{s: sum(m.y[s, f, t]() for t in m.time) for s in m.visitors} for f in m.faculty})
+        fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+        sns.heatmap(y, ax=ax, annot=df[y.columns], cmap="crest", square=True, cbar=False)
+        utility = sum(m.utility[s]() for s in m.visitors)
+        ax.set_title(f"Total Utility = {utility:0.1f}")
+
+    def check_requests(self):
+        if not self.has_feasible_solution():
+            raise RuntimeError(self.infeasibility_report())
+        m = self.model
+        total_meetings = {}
+        for s in m.visitors:
+            total_meetings[s] = 0
+            for f in m.faculty:
+                preferred_meeting = 0
+                for t in m.time:
+                    total_meetings[s] += int(m.y[s, f, t]())
+                
+                    if f in self.requests[s]:
+                        preferred_meeting += m.y[s, f, t]()
+                if f in self.requests[s] and preferred_meeting < 0.99:
+                    print(s,"is not meeting with",f, "( weight =",self.student_preferences[(s, f)],")")
+        
+        print(" ")
+        num_meetings = [v for i, (k, v) in enumerate(total_meetings.items())]
+        count = Counter(num_meetings)
+        for i, k in enumerate(count):
+            print(count[k],"visitors with",k,"meetings")
+        
+        #for s in total_meetings.keys():
+        #    print(s,"has",total_meetings[s],"meetings")

@@ -1,0 +1,24 @@
+faculty:
+  Faculty A:
+    building: BuildingB
+    room: "101"
+    areas: ["Area1"]
+    status: active
+  Faculty B:
+    building: BuildingA
+    room: "202"
+    areas: ["Area2"]
+    status: active
+  Faculty C:
+    building: BuildingB
+    room: "103"
+    areas: ["Area1", "Area2"]
+    status: legacy
+  Faculty D:
+    building: BuildingA
+    room: "204"
+    areas: ["Area1"]
+    status: external
+
+aliases:
+  "Faculty Bee": "Faculty B"

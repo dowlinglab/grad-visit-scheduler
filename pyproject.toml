@@ -1,0 +1,36 @@
+[project]
+name = "grad-visitor-scheduler"
+version = "0.1.0"
+description = "MILP-based scheduling for graduate visit days"
+requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "BSD-3-Clause" }
+keywords = ["scheduling", "milp", "pyomo", "optimization"]
+authors = [
+  { name = "Dowling Lab" }
+]
+dependencies = [
+  "pandas",
+  "numpy",
+  "pyomo",
+  "matplotlib",
+  "seaborn",
+  "pyyaml",
+  "python-docx",
+]
+
+[project.optional-dependencies]
+highs = ["highspy"]
+cbc = []
+gurobi = []
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
