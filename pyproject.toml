@@ -13,6 +13,7 @@ dependencies = [
   "pandas",
   "numpy",
   "pyomo",
+  "highspy",
   "matplotlib",
   "seaborn",
   "pyyaml",
@@ -20,7 +21,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-highs = ["highspy"]
 cbc = []
 gurobi = []
 dev = ["pytest"]

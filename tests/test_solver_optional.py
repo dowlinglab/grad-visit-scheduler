@@ -1,14 +1,18 @@
 from pathlib import Path
 import pytest
 import pyomo.environ as pyo
+from pyomo.common.errors import ApplicationError
 
 from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
 
 
 def _solver_available(name: str) -> bool:
-    if name == "highs":
-        return pyo.SolverFactory("appsi_highs").available() or pyo.SolverFactory("highs").available()
-    return pyo.SolverFactory(name).available()
+    try:
+        if name == "highs":
+            return pyo.SolverFactory("appsi_highs").available() or pyo.SolverFactory("highs").available()
+        return pyo.SolverFactory(name).available()
+    except ApplicationError:
+        return False
 
 
 @pytest.mark.parametrize(

@@ -10,10 +10,13 @@ This repository contains only public code and example data. It does not include 
 pip install grad-visitor-scheduler
 ```
 
-Optional solver extras:
+Solver setup:
+
+- HiGHS is installed by default via the `highspy` dependency.
+- To use CBC, install the solver binary with conda:
 
 ```bash
-pip install grad-visitor-scheduler[highs]
+conda install -c conda-forge coincbc
 ```
 
 ## Quickstart
