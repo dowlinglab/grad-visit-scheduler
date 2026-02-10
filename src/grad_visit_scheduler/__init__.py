@@ -19,3 +19,6 @@ __all__ = [
     "scheduler_from_configs",
     "export_visitor_docx",
 ]
+from importlib.metadata import version as _version
+
+__version__ = _version("grad-visitor-scheduler")
