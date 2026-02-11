@@ -1,7 +1,7 @@
 # Grad Visitor Scheduler
 
-[![Docs (latest)](https://readthedocs.org/projects/grad-visit-scheduler/badge/?version=latest)](https://grad-visit-scheduler.readthedocs.io/en/latest/)
-[![Docs (stable)](https://readthedocs.org/projects/grad-visit-scheduler/badge/?version=stable)](https://grad-visit-scheduler.readthedocs.io/en/stable/)
+[![Docs Latest](https://img.shields.io/badge/docs-latest-2E86C1?logo=readthedocs&logoColor=white)](https://grad-visit-scheduler.readthedocs.io/en/latest/)
+[![Docs Stable](https://img.shields.io/badge/docs-stable-2EA043?logo=readthedocs&logoColor=white)](https://grad-visit-scheduler.readthedocs.io/en/stable/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dowlinglab/grad-visit-scheduler/blob/main/examples/large_example_colab.ipynb)
 
 MILP-based scheduling utilities for graduate visit days. Created by [Alex Dowling](https://engineering.nd.edu/faculty/alexander-dowling/) and [Jeff Kantor](https://engineering.nd.edu/news/in-memoriam-jeffrey-kantor-former-vice-president-associate-provost-and-dean/) at the University of Notre Dame.
