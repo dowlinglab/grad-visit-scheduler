@@ -2,6 +2,8 @@
 
 Mixed integer optimization-based scheduler for visitor-faculty meetings at department recruitment events.
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dowlinglab/grad-visit-scheduler/blob/main/examples/large_example_colab.ipynb)
+
 ## Motivation
 
 Many graduate programs host recruitment visits where prospective students meet faculty one-on-one or in small groups. Building schedules by hand is difficult because preferences, availability, group limits, room/building constraints, and break/travel windows all interact.
