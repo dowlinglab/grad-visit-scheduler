@@ -1,6 +1,6 @@
 [project]
 name = "grad-visitor-scheduler"
-version = "0.1.1"
+version = "0.1.2"
 description = "MILP-based scheduling for graduate visit days"
 requires-python = ">=3.9"
 readme = "README.md"
