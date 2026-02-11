@@ -1,3 +1,5 @@
+"""Validation and error-path tests."""
+
 from pathlib import Path
 import pytest
 import pandas as pd
@@ -7,11 +9,13 @@ from grad_visit_scheduler.config import load_faculty_catalog, load_run_config, b
 
 
 def _write_csv(path: Path, rows):
+    """Write test rows to a CSV file."""
     df = pd.DataFrame(rows)
     df.to_csv(path, index=False)
 
 
 def test_missing_name_column_raises(tmp_path: Path):
+    """Raise when visitor CSV is missing the required ``Name`` column."""
     csv_path = tmp_path / "visitors.csv"
     _write_csv(csv_path, [{"Prof1": "Faculty A", "Area1": "Area1"}])
 
@@ -36,6 +40,7 @@ def test_missing_name_column_raises(tmp_path: Path):
 
 
 def test_duplicate_names_raise(tmp_path: Path):
+    """Raise when visitor CSV contains duplicate names."""
     csv_path = tmp_path / "visitors.csv"
     _write_csv(
         csv_path,
@@ -66,6 +71,7 @@ def test_duplicate_names_raise(tmp_path: Path):
 
 
 def test_invalid_faculty_status_raises(tmp_path: Path):
+    """Raise when faculty catalog includes an invalid status value."""
     csv_path = tmp_path / "visitors.csv"
     _write_csv(csv_path, [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1"}])
 
@@ -90,6 +96,7 @@ def test_invalid_faculty_status_raises(tmp_path: Path):
 
 
 def test_alias_target_missing_raises(tmp_path: Path):
+    """Raise when an alias target does not exist in the faculty list."""
     faculty_yaml = tmp_path / "faculty.yaml"
     faculty_yaml.write_text(
         "faculty:\n  Faculty A:\n    building: BuildingB\n    room: '101'\n    areas: ['Area1']\n    status: active\naliases:\n  Alias A: Faculty B\n"
@@ -100,6 +107,7 @@ def test_alias_target_missing_raises(tmp_path: Path):
 
 
 def test_missing_buildings_in_run_config_raises(tmp_path: Path):
+    """Raise when run config omits the ``buildings`` section."""
     run_yaml = tmp_path / "run.yaml"
     run_yaml.write_text("breaks: [1]\n")
 
@@ -108,11 +116,13 @@ def test_missing_buildings_in_run_config_raises(tmp_path: Path):
 
 
 def test_build_times_by_building_missing_buildings_raises():
+    """Raise when building slot mapping is requested without buildings."""
     with pytest.raises(ValueError, match="building"):
         build_times_by_building({})
 
 
 def test_invalid_faculty_building_raises(tmp_path: Path):
+    """Raise when faculty entries reference unknown building names."""
     faculty_yaml = tmp_path / "faculty.yaml"
     faculty_yaml.write_text(
         "faculty:\n"

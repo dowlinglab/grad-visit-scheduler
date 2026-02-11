@@ -1,3 +1,5 @@
+"""Run the repository example without installing the package."""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -5,5 +5,16 @@ import pandas as pd
 
 
 def load_visitor_csv(path: str):
-    """Load the visitor preference CSV into a DataFrame."""
+    """Load visitor preference data from CSV.
+
+    Parameters
+    ----------
+    path:
+        Path to a CSV file containing visitor preferences.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Loaded CSV contents.
+    """
     return pd.read_csv(path)

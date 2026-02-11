@@ -10,6 +10,18 @@ from .core import Scheduler, Mode, Solver
 
 
 def load_yaml(path: str | Path) -> Dict[str, Any]:
+    """Load a YAML file and return its contents.
+
+    Parameters
+    ----------
+    path:
+        Path to the YAML file.
+
+    Returns
+    -------
+    dict
+        Parsed YAML content, or an empty dictionary if the file is empty.
+    """
     p = Path(path)
     with p.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
@@ -17,6 +29,24 @@ def load_yaml(path: str | Path) -> Dict[str, Any]:
 
 
 def load_faculty_catalog(path: str | Path) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """Load and validate a faculty catalog YAML file.
+
+    Parameters
+    ----------
+    path:
+        Path to the faculty catalog YAML file.
+
+    Returns
+    -------
+    tuple[dict, dict]
+        A tuple of ``(faculty, aliases)`` dictionaries.
+
+    Raises
+    ------
+    ValueError
+        If the catalog has no ``faculty`` section or an alias points to an
+        unknown faculty name.
+    """
     data = load_yaml(path)
     faculty = data.get("faculty", {})
     aliases = data.get("aliases", {})
@@ -29,6 +59,23 @@ def load_faculty_catalog(path: str | Path) -> Tuple[Dict[str, Any], Dict[str, st
 
 
 def load_run_config(path: str | Path) -> Dict[str, Any]:
+    """Load and validate a run configuration YAML file.
+
+    Parameters
+    ----------
+    path:
+        Path to the run configuration YAML file.
+
+    Returns
+    -------
+    dict
+        Parsed run configuration.
+
+    Raises
+    ------
+    ValueError
+        If required sections are missing or building ordering is invalid.
+    """
     data = load_yaml(path)
     if "buildings" not in data or not data.get("buildings"):
         raise ValueError("Run config missing 'buildings' section.")
@@ -44,6 +91,18 @@ def load_run_config(path: str | Path) -> Dict[str, Any]:
 
 
 def build_times_by_building(run_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Build scheduler ``times_by_building`` data from a run config.
+
+    Parameters
+    ----------
+    run_config:
+        Parsed run configuration dictionary.
+
+    Returns
+    -------
+    dict
+        Mapping of building names to slot strings, with optional ``"breaks"``.
+    """
     buildings = run_config.get("buildings", {})
     if not buildings:
         raise ValueError("Run config must define at least one building.")
@@ -66,6 +125,29 @@ def scheduler_from_configs(
     solver: Solver = Solver.HIGHS,
     include_legacy_faculty: bool = False,
 ) -> Scheduler:
+    """Create and configure a :class:`~grad_visit_scheduler.core.Scheduler`.
+
+    Parameters
+    ----------
+    faculty_catalog_path:
+        Path to the faculty catalog YAML file.
+    run_config_path:
+        Path to the run configuration YAML file.
+    student_data_filename:
+        Path to visitor preference CSV data.
+    mode:
+        Building sequencing mode.
+    solver:
+        Solver backend to use.
+    include_legacy_faculty:
+        If ``True``, include all legacy faculty from the catalog even when they
+        were not explicitly requested by visitors.
+
+    Returns
+    -------
+    Scheduler
+        Configured scheduler instance.
+    """
     faculty_catalog, aliases = load_faculty_catalog(faculty_catalog_path)
     run_cfg = load_run_config(run_config_path)
     buildings = set(run_cfg.get("buildings", {}).keys())

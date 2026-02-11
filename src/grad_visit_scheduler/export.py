@@ -13,7 +13,36 @@ def export_visitor_docx(
     font_size_pt: int = 11,
     include_breaks: bool = True,
 ):
-    """Write a visitor schedule DOCX for a solved scheduler."""
+    """Export a solved visitor schedule to a DOCX document.
+
+    Parameters
+    ----------
+    scheduler:
+        Solved scheduler instance containing ``model`` and metadata.
+    filename:
+        Output DOCX filename.
+    building:
+        Building key used to pick displayed time labels. Defaults to the first
+        configured building.
+    font_name:
+        Font family used in the generated document.
+    font_size_pt:
+        Font size in points.
+    include_breaks:
+        If ``True``, include explicit "Break" rows for unscheduled slots.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the written DOCX file.
+
+    Raises
+    ------
+    RuntimeError
+        If the scheduler does not have a feasible solution.
+    ImportError
+        If ``python-docx`` is not installed.
+    """
     if not scheduler.has_feasible_solution():
         raise RuntimeError(
             f"No feasible solution available (termination: {getattr(scheduler, 'last_termination_condition', None)})."

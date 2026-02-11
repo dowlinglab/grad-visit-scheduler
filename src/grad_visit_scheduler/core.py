@@ -1,3 +1,5 @@
+"""Core scheduling model, solver integration, and plotting helpers."""
+
 import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
 from pyomo.core import Suffix
@@ -11,6 +13,8 @@ from enum import Enum
 from collections import Counter
 
 class Solver(Enum):
+    """Supported optimization solver backends."""
+
     HIGHS = 1
     CBC = 2
     GUROBI = 3
@@ -18,16 +22,34 @@ class Solver(Enum):
 
 
 class FacultyStatus(Enum):
+    """Faculty catalog status labels."""
+
     ACTIVE = "active"
     LEGACY = "legacy"
     EXTERNAL = "external"
 
 class Mode(Enum):
+    """Building sequencing constraints for visitor movement."""
+
     BUILDING_A_FIRST = 1
     BUILDING_B_FIRST = 2
     NO_OFFSET = 3
 
 def schedule_axes(figsize,nslots=7):
+    """Create a matplotlib axis formatted for visit-day schedule plots.
+
+    Parameters
+    ----------
+    figsize:
+        Figure size passed to ``plt.subplots``.
+    nslots:
+        Number of schedule slots to display.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        Configured axis with time ticks and grid lines.
+    """
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     # 30 minute time slots, starting at 1:00 PM, + 10 minutes to
     # draw the last tick
@@ -41,34 +63,30 @@ def schedule_axes(figsize,nslots=7):
     return ax
     
 def slot2min(slot):
+    """Convert a slot string like ``'1:00-1:25'`` to integer minutes.
+
+    Parameters
+    ----------
+    slot:
+        Schedule slot label in ``start-end`` format.
+
+    Returns
+    -------
+    tuple[int, int]
+        Start and end times in minutes.
+    """
     start, stop = slot.split("-")
     a, b = start.split(":")
     c, d = stop.split(":")
     return 60*int(a) + int(b), 60*int(c) + int(d)
 
 def abbreviate_name(full_name):
-    """
-    Abbreviates a full name by replacing middle and last names with single initials.
+    """Abbreviate a full name for compact schedule labels.
 
-    Args:
-        full_name: The full name as a string (e.g., "John Michael Doe").
-
-    Returns:
-        The abbreviated name as a string (e.g., "John M. D.").
-        Returns the original name if only first name is provided.
-        Returns the first and last name initials if only 2 names are provided.
-        Returns an empty string if the input is empty or None.
-
-    Example usage (including the corrected case)
-        print(abbreviate_name("John Michael Doe"))      # Output: John M. D.
-        print(abbreviate_name("Jane Doe"))             # Output: Jane D.  (Corrected!)
-        print(abbreviate_name("John"))                # Output: John
-        print(abbreviate_name("John David Michael Doe")) # Output: John D. M. D.
-        print(abbreviate_name("John D. Michael"))        # Output: John M.
-        print(abbreviate_name(""))                     # Output: 
-        print(abbreviate_name(None))                   # Output:
-    
-    Code generated with Gemini
+    Examples
+    --------
+    ``"Jane Doe" -> "Jane D."``
+    ``"John Michael Doe" -> "John M. D."``
     """
     if not full_name:  # Check for empty or None input
         return ""
@@ -106,9 +124,7 @@ DEFAULT_COLOR_CYCLE = [
 BOX_ALPHA = 1.0
 
 class Scheduler:
-    """ Scheduler for meetings of visitors and faculty
-    
-    """
+    """Scheduler for assigning visitor-faculty meetings across time slots."""
     def __init__(
         self,
         times_by_building,
@@ -119,6 +135,27 @@ class Scheduler:
         faculty_catalog=None,
         faculty_aliases=None,
     ):
+        """Initialize a scheduler with buildings, visitors, and faculty data.
+
+        Parameters
+        ----------
+        times_by_building:
+            Mapping of building names to ordered time-slot labels and optional
+            ``"breaks"`` list.
+        student_data_filename:
+            CSV file with visitor names and ranked preferences.
+        mode:
+            Building sequencing mode.
+        solver:
+            Solver backend used by :meth:`schedule_visitors`.
+        include_legacy_faculty:
+            If ``True``, include all legacy faculty entries from the catalog.
+        faculty_catalog:
+            Optional faculty catalog dictionary. If omitted, a small default
+            synthetic catalog is created.
+        faculty_aliases:
+            Optional mapping of alias name to canonical faculty name.
+        """
 
         # Faculty fields (adjust this depending on number of supplied preferences)
         # Support up to 5 ranked faculty preferences
@@ -151,6 +188,14 @@ class Scheduler:
         self.solver = solver
 
     def _set_time_data(self, times_by_building):
+        """Validate building slot data and populate scheduling time metadata.
+
+        Parameters
+        ----------
+        times_by_building:
+            Mapping of building names to ordered slot labels, plus optional
+            ``"breaks"`` key containing slot indices.
+        """
 
         self.break_times = []
         times_by_building_copy = {}
@@ -180,6 +225,7 @@ class Scheduler:
         self.times_by_building = times_by_building_copy
 
     def _build_box_colors(self):
+        """Return a color map for configured buildings."""
         return {
             bldg: DEFAULT_COLOR_CYCLE[i % len(DEFAULT_COLOR_CYCLE)]
             for i, bldg in enumerate(self.buildings)
@@ -232,6 +278,7 @@ class Scheduler:
         self.specify_limited_student_availability({})
 
     def _load_default_faculty_data(self):
+        """Load a minimal synthetic faculty catalog for default/demo usage."""
         self.legacy_faculty = {}
         self.faculty = {}
         self.external_faculty = {}
@@ -246,6 +293,13 @@ class Scheduler:
             }
 
     def _load_faculty_catalog(self, catalog):
+        """Load faculty entries from a user-provided catalog dictionary.
+
+        Parameters
+        ----------
+        catalog:
+            Mapping from faculty name to metadata fields.
+        """
         self.legacy_faculty = {}
         self.faculty = {}
         self.external_faculty = {}
@@ -275,6 +329,13 @@ class Scheduler:
                 self.faculty[name] = dict(info)
 
     def _add_legacy_faculty_from_preferences(self, include_all=False):
+        """Merge legacy faculty into active scheduling set.
+
+        Parameters
+        ----------
+        include_all:
+            If ``True``, include all legacy faculty regardless of requests.
+        """
         if not hasattr(self, "legacy_faculty"):
             return
         legacy_names = set(self.legacy_faculty.keys())
@@ -292,6 +353,7 @@ class Scheduler:
                 self.faculty[name] = dict(self.legacy_faculty[name])
 
     def _add_external_faculty_from_preferences(self):
+        """Create placeholder external faculty records from visitor requests."""
         names_in_prefs = set()
         for f in self.faculty_fields:
             if f in self.student_data.columns:
@@ -312,6 +374,21 @@ class Scheduler:
                 self.faculty[name] = dict(info)
 
     def add_external_faculty(self, name, building=None, room='', areas=None, available=None):
+        """Add or update an external faculty entry.
+
+        Parameters
+        ----------
+        name:
+            Faculty display name.
+        building:
+            Building key. Defaults to building A.
+        room:
+            Room label used in exports and plots.
+        areas:
+            Optional list of research areas for area-based preference boosts.
+        available:
+            Optional list of available time-slot indices.
+        """
         if areas is None:
             areas = []
         if available is None:
@@ -328,9 +405,19 @@ class Scheduler:
             self.faculty[name] = dict(self.external_faculty[name])
 
     def _is_legacy_faculty(self, name):
+        """Return whether ``name`` belongs to the legacy faculty pool."""
         return hasattr(self, "legacy_faculty") and name in self.legacy_faculty
 
     def faculty_limited_availability(self, name, available):
+        """Set the available time slots for a faculty member.
+
+        Parameters
+        ----------
+        name:
+            Faculty name.
+        available:
+            List of integer slot indices where meetings are allowed.
+        """
         if name not in self.faculty.keys():
             raise ValueError(name,"is not a faculty member... check spelling")
 
@@ -344,12 +431,18 @@ class Scheduler:
                        faculty_weight = {'Prof1': 4.0, 'Prof2': 3.0, 'Prof3': 2.0, 'Prof4': 1.0, 'Prof5': 0.5},
                        area_weight = {'Area1': 1.0, 'Area2': 0.5},
                        base_weight = 0.2):
-        """ Update weights for student preferences
+        """Set preference weights and rebuild visitor-faculty utility scores.
 
-        Arguments:
-            faculty_weight: weight for faculty preferences
-            area_weight: weight for area preferences
-            base_weight: base weight for any meeting
+        Parameters
+        ----------
+        faculty_weight:
+            Either a scalar applied to all ranked faculty columns, or a dict
+            keyed by preference column names (for example ``Prof1``).
+        area_weight:
+            Either a scalar applied to all area columns, or a dict keyed by area
+            column names (for example ``Area1``).
+        base_weight:
+            Baseline utility assigned to any feasible visitor-faculty match.
         """
 
         if isinstance(faculty_weight, dict):
@@ -375,6 +468,7 @@ class Scheduler:
         self._update_student_preferences() 
 
     def _update_student_preferences(self):
+        """Recompute utility weights for each visitor-faculty pair."""
 
         # Store specific requests by student name
         self.requests = {s:[] for s in self.student_data.index}
@@ -416,10 +510,13 @@ class Scheduler:
 
 
     def specify_limited_student_availability(self, students_available):
-        """ Specify is some students need to leave early
+        """Restrict availability for a subset of visitors.
 
-        Arguments:
-            students_available: dictionary with student names as keys, list of times available as values
+        Parameters
+        ----------
+        students_available:
+            Mapping of visitor name to allowed slot indices. Visitors not listed
+            remain available for all time slots.
         """
 
         students_available
@@ -441,6 +538,13 @@ class Scheduler:
         self.students_available = students_available
 
     def plot_preferences(self):
+        """Plot a heatmap of visitor-faculty utility weights.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` matplotlib objects for further customization.
+        """
         fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 
         df = pd.DataFrame()
@@ -455,21 +559,29 @@ class Scheduler:
         return fig, ax
 
     def schedule_visitors(self, group_penalty=0.1, min_visitors=0, max_visitors=8, min_faculty=0, max_group=2, enforce_breaks=False, tee=False, run_name=''):
-        '''
-        Compute optimal schedule for graduate visit meetings
-        
-        Arguments:
-            group_penalty: negative utility for each student above one in a meeting
-            min_visitors: minimum number of visitors each faculty member must meet*
-            max_visitors: maximum number of visitors each faculty member may meet*
-            min_faculty: minimum number of faculty each visitor must meet
-            max_group: maximum size of a meeting group
-            
-            * only enforced for faculty who have availability
+        """Solve the mixed-integer scheduling model.
 
-            Note: 3*group_penalty also applies for the number of faculty who meeting with more than max_visitors - 2 students
-            This helps "spread the load" among faculty
-        '''
+        Parameters
+        ----------
+        group_penalty:
+            Utility penalty for adding a second (or later) visitor to the same
+            faculty-time meeting.
+        min_visitors:
+            Minimum total meetings per available faculty member.
+        max_visitors:
+            Maximum total meetings per faculty member.
+        min_faculty:
+            Minimum number of meetings required per visitor.
+        max_group:
+            Maximum number of visitors allowed in a single faculty-time meeting.
+        enforce_breaks:
+            If ``True``, enforce explicit break constraints even outside
+            ``Mode.NO_OFFSET``.
+        tee:
+            If ``True``, stream solver output.
+        run_name:
+            Optional suffix for saved plot filenames.
+        """
 
         self.last_solve_params = {
             "group_penalty": group_penalty,
@@ -484,6 +596,23 @@ class Scheduler:
         self.run_name = run_name
 
     def _build_model(self, group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks=False):
+        """Build the Pyomo MILP model for the current scheduler state.
+
+        Parameters
+        ----------
+        group_penalty:
+            Penalty applied to group meetings.
+        min_visitors:
+            Minimum required meetings per available faculty member.
+        max_visitors:
+            Maximum total meetings per faculty member.
+        min_faculty:
+            Minimum required meetings per visitor.
+        max_group:
+            Maximum number of visitors in a single faculty-time meeting.
+        enforce_breaks:
+            If ``True``, enforce break constraints during configured break slots.
+        """
         m = pyo.ConcreteModel()
 
         # SETS
@@ -668,6 +797,13 @@ class Scheduler:
         self.model = m
         
     def _solve_model(self, tee):
+        """Solve the currently built model with the configured solver backend.
+
+        Parameters
+        ----------
+        tee:
+            If ``True``, stream solver output to stdout.
+        """
 
         if self.solver is Solver.HIGHS:
             opt = None
@@ -713,11 +849,13 @@ class Scheduler:
         self.last_solver_status = results.solver.status
 
     def has_feasible_solution(self):
+        """Return ``True`` if the latest solver run was feasible or optimal."""
         if not hasattr(self, "results"):
             return False
         return self.last_termination_condition in [TerminationCondition.optimal, TerminationCondition.feasible]
 
     def infeasibility_report(self):
+        """Summarize likely causes when the model has no feasible solution."""
         if not hasattr(self, "results"):
             return "No solver results available."
         if self.has_feasible_solution():
@@ -761,6 +899,15 @@ class Scheduler:
         return "\n".join(lines)
 
     def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True):
+        """Plot the solved schedule grouped by faculty.
+
+        Parameters
+        ----------
+        save_files:
+            If ``True``, save ``faculty_schedule*.pdf`` and ``.png``.
+        abbreviate_student_names:
+            If ``True``, shorten visitor names in labels.
+        """
         if not self.has_feasible_solution():
             raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
         m = self.model
@@ -805,6 +952,15 @@ class Scheduler:
             plt.savefig(name + ".png")
     
     def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True):
+        """Plot the solved schedule grouped by visitor.
+
+        Parameters
+        ----------
+        save_files:
+            If ``True``, save ``visitor_schedule*.pdf`` and ``.png``.
+        abbreviate_student_names:
+            If ``True``, shorten visitor names in y-axis labels.
+        """
         if not self.has_feasible_solution():
             raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
         m = self.model
@@ -847,11 +1003,22 @@ class Scheduler:
             plt.savefig(name + ".png")
 
     def export_visitor_docx(self, filename, **kwargs):
+        """Export solved visitor schedules to a DOCX file.
+
+        Parameters
+        ----------
+        filename:
+            Destination DOCX path.
+        **kwargs:
+            Additional keyword arguments forwarded to
+            :func:`grad_visit_scheduler.export.export_visitor_docx`.
+        """
         from .export import export_visitor_docx
 
         return export_visitor_docx(self, filename, **kwargs)
         
     def show_utility(self):
+        """Plot realized meetings and display total utility for a solved model."""
         m = self.model
         y = pd.DataFrame.from_dict({f:{s: sum(m.y[s, f, t]() for t in m.time) for s in m.visitors} for f in m.faculty})
         fig, ax = plt.subplots(1, 1, figsize=(10, 8))
@@ -860,6 +1027,7 @@ class Scheduler:
         ax.set_title(f"Total Utility = {utility:0.1f}")
 
     def check_requests(self):
+        """Print unmet requested faculty meetings and meeting-count distribution."""
         if not self.has_feasible_solution():
             raise RuntimeError(self.infeasibility_report())
         m = self.model

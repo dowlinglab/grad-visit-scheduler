@@ -1,3 +1,5 @@
+"""Scheduler data and preprocessing tests."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -8,11 +10,13 @@ from grad_visit_scheduler.config import build_times_by_building
 
 
 def _write_csv(path: Path, rows):
+    """Write test rows to a CSV file."""
     df = pd.DataFrame(rows)
     df.to_csv(path, index=False)
 
 
 def test_build_times_by_building_includes_breaks():
+    """Ensure break slots are preserved in generated time mapping."""
     run_cfg = {
         "buildings": {"BuildingA": ["1:00-1:25"], "BuildingB": ["1:00-1:25"]},
         "breaks": [1],
@@ -23,6 +27,7 @@ def test_build_times_by_building_includes_breaks():
 
 
 def test_aliases_applied_in_preferences(tmp_path: Path):
+    """Ensure faculty aliases are applied while loading visitor requests."""
     csv_path = tmp_path / "visitors.csv"
     _write_csv(
         csv_path,
@@ -60,6 +65,7 @@ def test_aliases_applied_in_preferences(tmp_path: Path):
 
 
 def test_external_faculty_added_from_preferences(tmp_path: Path):
+    """Ensure unknown requested names are added as external faculty."""
     csv_path = tmp_path / "visitors.csv"
     _write_csv(
         csv_path,
@@ -96,6 +102,7 @@ def test_external_faculty_added_from_preferences(tmp_path: Path):
 
 
 def test_faculty_limited_availability_validation(tmp_path: Path):
+    """Reject limited-availability slot indices outside valid range."""
     csv_path = tmp_path / "visitors.csv"
     _write_csv(
         csv_path,
