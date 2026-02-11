@@ -36,6 +36,12 @@ Faculty-centered schedule:
 
 ![Faculty Schedule Example](_static/faculty_schedule_example.png)
 
+How to read these plots:
+
+- `ABC` and `XYZ` are building abbreviations from the run config.
+- In visitor-view plots, labels are `Faculty (Building)` and blank slots indicate breaks/travel windows.
+- In faculty-view plots, the number in parentheses next to each faculty name is that faculty member's total number of scheduled meetings.
+
 Full setup, model details, and solver outputs are documented in [Quickstart](quickstart.md) and [Mathematical Formulation](formulation.md).
 
 ```{toctree}
