@@ -35,3 +35,8 @@ if s.has_feasible_solution():
 Notes:
 - `building_order` declares which building is Building A vs Building B.
 - Use `Mode.BUILDING_A_FIRST`, `Mode.BUILDING_B_FIRST`, or `Mode.NO_OFFSET` to control movement.
+
+Formulation-focused example:
+- `faculty_formulation.yaml`: three-faculty catalog used in docs.
+- `config_formulation.yaml`: four slots with two break options (`[2, 3]`).
+- `data_formulation_visitors.csv`: ten visitors for worked-formulation examples.

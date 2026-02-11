@@ -145,7 +145,7 @@ def scheduler_from_configs(
 
     Returns
     -------
-    Scheduler
+    grad_visit_scheduler.core.Scheduler
         Configured scheduler instance.
     """
     faculty_catalog, aliases = load_faculty_catalog(faculty_catalog_path)

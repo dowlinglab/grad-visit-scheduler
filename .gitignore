@@ -12,6 +12,7 @@ coverage.xml
 htmlcov/
 dist/
 build/
+docs/_build/
 *.log
 .env
 .env.*

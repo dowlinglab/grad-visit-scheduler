@@ -1,0 +1,11 @@
+Name,Prof1,Prof2,Prof3,Prof4,Area1,Area2
+Visitor 01,Faculty A,Faculty C,Faculty B,,Area1,Area2
+Visitor 02,Faculty A,Faculty B,Faculty C,,Area1,Area2
+Visitor 03,Faculty B,Faculty C,Faculty A,,Area2,Area1
+Visitor 04,Faculty C,Faculty A,Faculty B,,Area1,Area2
+Visitor 05,Faculty B,Faculty A,Faculty C,,Area2,Area1
+Visitor 06,Faculty A,Faculty B,Faculty C,,Area1,Area2
+Visitor 07,Faculty C,Faculty B,Faculty A,,Area1,Area2
+Visitor 08,Faculty B,Faculty C,Faculty A,,Area2,Area1
+Visitor 09,Faculty C,Faculty A,Faculty B,,Area1,Area2
+Visitor 10,Faculty A,Faculty C,Faculty B,,Area1,Area2

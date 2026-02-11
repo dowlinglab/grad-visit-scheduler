@@ -1,0 +1,18 @@
+faculty:
+  Faculty A:
+    building: BuildingA
+    room: "201"
+    areas: ["Area1"]
+    status: active
+  Faculty B:
+    building: BuildingB
+    room: "102"
+    areas: ["Area2"]
+    status: active
+  Faculty C:
+    building: BuildingA
+    room: "203"
+    areas: ["Area1", "Area2"]
+    status: active
+
+aliases: {}
