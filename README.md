@@ -1,5 +1,8 @@
 # Grad Visitor Scheduler
 
+[![Docs (latest)](https://readthedocs.org/projects/grad-visit-scheduler/badge/?version=latest)](https://grad-visit-scheduler.readthedocs.io/en/latest/)
+[![Docs (stable)](https://readthedocs.org/projects/grad-visit-scheduler/badge/?version=stable)](https://grad-visit-scheduler.readthedocs.io/en/stable/)
+
 MILP-based scheduling utilities for graduate visit days. Created by Alex Dowling and Jeff Kantor at the University of Notre Dame.
 
 ## Motivation
