@@ -9,7 +9,7 @@ Mixed integer optimization-based scheduler for visitor-faculty meetings at depar
 
 Many graduate programs host recruitment visits where prospective students meet faculty one-on-one or in small groups. Building schedules by hand is difficult because preferences, availability, group limits, room/building constraints, and break/travel windows all interact.
 
-This project packages the scheduling workflow used for graduate recruitment at Notre Dame CBE as an open-source Python tool. Under the hood, it builds and solves a mixed-integer linear program (MILP) in Pyomo.
+This project packages the scheduling workflow used for graduate recruitment at [Notre Dame CBE](https://cbe.nd.edu) as an open-source Python tool. Under the hood, it builds and solves a mixed-integer linear program (MILP) in Pyomo.
 
 ## Workflow
 
