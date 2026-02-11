@@ -1,5 +1,7 @@
 # Quickstart
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dowlinglab/grad-visit-scheduler/blob/main/examples/large_example_colab.ipynb)
+
 This quickstart uses the larger formulation example:
 
 - `examples/faculty_formulation.yaml` (6 faculty: `Prof. A` to `Prof. F`)
