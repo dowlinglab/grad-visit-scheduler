@@ -2,9 +2,11 @@
 
 This quickstart uses the larger formulation example:
 
-- `examples/faculty_formulation.yaml` (3 faculty)
-- `examples/config_formulation.yaml` (4 meeting slots)
+- `examples/faculty_formulation.yaml` (6 faculty: `Prof. A` to `Prof. F`)
+- `examples/config_formulation.yaml` (4 meeting slots across buildings `ABC` and `XYZ`)
 - `examples/data_formulation_visitors.csv` (10 visitors)
+
+For a detailed explanation of this same example (model equations, conflicts, preferences, and solver output tables), see [Mathematical Formulation](formulation.md).
 
 ## 1) Understand the input files
 
@@ -18,8 +20,10 @@ The scheduler expects three inputs.
 ### Run config (`config_formulation.yaml`)
 
 - Defines slot times for two buildings.
+- Uses building names `ABC` and `XYZ`.
 - Defines break slots (`breaks: [2, 3]` in this example).
-- Optional weights and per-faculty availability.
+- Defines three topic areas: `Energy`, `Bio`, `Theory`.
+- Includes per-faculty availability conflicts.
 
 ### Visitor CSV (`data_formulation_visitors.csv`)
 
