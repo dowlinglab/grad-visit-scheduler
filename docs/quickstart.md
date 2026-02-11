@@ -88,9 +88,9 @@ Schedule plots from this example:
 
 How to interpret these plots:
 
-- `ABC` and `XYZ` are building abbreviations from `config_formulation.yaml`.
-- Visitor-view bars are labeled `Faculty (Building)`. Missing bars indicate breaks/travel slots.
-- In the faculty-view y-axis labels, the number in parentheses is each faculty member's total scheduled meetings.
+- `ABC` and `XYZ` are building abbreviations from `config_formulation.yaml`. The box color (blue versus green) also indicates the building.
+- Visitor-view bars are labeled `Faculty (Building)`. Missing blocks indicate breaks/travel slots.
+- In the faculty-view y-axis labels, the number in parentheses is each faculty member's total scheduled meetings. Missing blocks indicate faculty conflict. Blocks without a visitor name indicate a break (unused meeting).
 
 Generate a DOCX schedule:
 
