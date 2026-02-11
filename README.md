@@ -63,7 +63,6 @@ buildings is constrained:
 - `Mode.BUILDING_A_FIRST`: visitor starts in Building A, then may move to B
 - `Mode.BUILDING_B_FIRST`: visitor starts in Building B, then may move to A
 - `Mode.NO_OFFSET`: visitor may move either direction, but only with an empty slot
-```
 
 ## Export DOCX
 
