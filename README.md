@@ -4,7 +4,7 @@ MILP-based scheduling utilities for graduate visit days. Created by Alex Dowling
 
 ## Motivation
 
-Most (chemical engineering) graduate programs in the U.S. host admitted or prospective students for a visit or open house. A core part of those events is one-on-one or small-group meetings with individual faculty members. Building a fair, feasible schedule is challenging: faculty availability, room locations, and student preferences must all be respected simultaneously.
+Most chemical engineering graduate programs in the U.S. host admitted or prospective students for a visit or open house. A core part of those events is one-on-one or small-group meetings with individual faculty members. Building a fair, feasible schedule is challenging: faculty availability, room locations, and student preferences must all be respected simultaneously.
 
 This package is the meeting scheduler used by [Notre Dame Chemical and Biomolecular Engineering](https://cbe.nd.edu), released as a general-purpose, open-source tool. Under the hood, it formulates a mixed-integer linear program (MILP) in Pyomo, solves it with a standard solver, visualizes the results, and can export customized student schedules to DOCX.
 
@@ -78,13 +78,13 @@ to access the example files.
 
 Notre Dame CBE is split across two buildings (Nieuwland Science Hall and McCourtney Hall) separated by about a 7-minute walk. A key aspect of the scheduler is to ensure that any visitor who needs to move buildings does so during their break slot. A typical schedule uses six meeting slots, and each visitor and faculty member gets at least one middle-slot break.
 
-The run config defines exactly two buildings, and `building_order` declares which one is Building A vs Building B. Mode controls how movement between buildings is constrained:
+The run config defines exactly two buildings, and `building_order` declares which one is Building A versus Building B. Mode controls how movement between buildings is constrained:
 
 - `Mode.BUILDING_A_FIRST`: visitor starts in Building A, then may move to B
 - `Mode.BUILDING_B_FIRST`: visitor starts in Building B, then may move to A
 - `Mode.NO_OFFSET`: visitor may move either direction, but only with an empty slot
 
-## Refine The Schedule
+## Refine the Schedule
 
 The solver exposes several tunable parameters on `schedule_visitors` to refine the schedule:
 
@@ -99,7 +99,7 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 
 ## Export DOCX
 
-Finally, we have an optional feature to export the customized visitor schedules to a DOCX file. This facilitates easy copy-paste into individualized agendas provided to each visitor.
+You can optionally export customized visitor schedules to a DOCX file. This facilitates easy copy/paste into individualized agendas for each visitor.
 
 ```python
 from grad_visit_scheduler import export_visitor_docx
@@ -109,4 +109,4 @@ export_visitor_docx(s, "visitor_schedule.docx")
 
 ## License
 
-This software is released under a BSD-3-Clause license. Please adapt it to your own needs and share!
+This software is released under the BSD-3-Clause license. Please adapt it to your needs and share.
