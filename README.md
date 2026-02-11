@@ -4,7 +4,7 @@
 [![Docs (stable)](https://readthedocs.org/projects/grad-visit-scheduler/badge/?version=stable)](https://grad-visit-scheduler.readthedocs.io/en/stable/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dowlinglab/grad-visit-scheduler/blob/main/examples/large_example_colab.ipynb)
 
-MILP-based scheduling utilities for graduate visit days. Created by Alex Dowling and Jeff Kantor at the University of Notre Dame.
+MILP-based scheduling utilities for graduate visit days. Created by [Alex Dowling](https://engineering.nd.edu/faculty/alexander-dowling/) and [Jeff Kantor](https://engineering.nd.edu/news/in-memoriam-jeffrey-kantor-former-vice-president-associate-provost-and-dean/) at the University of Notre Dame.
 
 ## Motivation
 
