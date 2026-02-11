@@ -1,4 +1,4 @@
-"""Run the repository example without installing the package."""
+"""Run the formulation-focused example without installing the package."""
 
 from __future__ import annotations
 
@@ -16,26 +16,27 @@ from grad_visit_scheduler import scheduler_from_configs, Mode, Solver  # noqa: E
 examples = ROOT / "examples"
 
 s = scheduler_from_configs(
-    examples / "faculty_example.yaml",
-    examples / "config_basic.yaml",
-    examples / "data_fake_visitors.csv",
+    examples / "faculty_formulation.yaml",
+    examples / "config_formulation.yaml",
+    examples / "data_formulation_visitors.csv",
     mode=Mode.NO_OFFSET,
     solver=Solver.HIGHS,
 )
 
 s.schedule_visitors(
-    group_penalty=0.1,
-    min_visitors=0,
-    max_visitors=4,
+    group_penalty=0.2,
+    min_visitors=2,
+    max_visitors=8,
     min_faculty=1,
     max_group=2,
     enforce_breaks=True,
     tee=False,
-    run_name="demo",
+    run_name="formulation_demo",
 )
 
 if s.has_feasible_solution():
     s.show_faculty_schedule(save_files=True)
     s.show_visitor_schedule(save_files=True)
+    print("Feasible solution found.")
 else:
     print(s.infeasibility_report())

@@ -1,3 +1,5 @@
+"""Pytest configuration for local source-tree test runs."""
+
 from __future__ import annotations
 
 import sys

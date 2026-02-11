@@ -35,3 +35,8 @@ if s.has_feasible_solution():
 Notes:
 - `building_order` declares which building is Building A vs Building B.
 - Use `Mode.BUILDING_A_FIRST`, `Mode.BUILDING_B_FIRST`, or `Mode.NO_OFFSET` to control movement.
+
+Formulation-focused example:
+- `faculty_formulation.yaml`: six-faculty catalog (`Prof. A` to `Prof. F`) used in docs.
+- `config_formulation.yaml`: buildings `ABC` and `XYZ`, four slots, and two break options (`[2, 3]`), with faculty-specific availability conflicts.
+- `data_formulation_visitors.csv`: ten visitors with ranked faculty preferences plus topic interests (`Energy`, `Bio`, `Theory`).

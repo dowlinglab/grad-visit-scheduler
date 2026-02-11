@@ -1,3 +1,5 @@
+"""Optional solver integration tests."""
+
 from pathlib import Path
 import pytest
 import pyomo.environ as pyo
@@ -7,6 +9,7 @@ from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
 
 
 def _solver_available(name: str) -> bool:
+    """Return whether a named Pyomo solver backend is available."""
     try:
         if name == "highs":
             return pyo.SolverFactory("appsi_highs").available() or pyo.SolverFactory("highs").available()
@@ -24,6 +27,7 @@ def _solver_available(name: str) -> bool:
     ],
 )
 def test_solver_solve_basic(solver_enum, solver_name):
+    """Solve the basic example when the selected solver is installed."""
     if not _solver_available(solver_name):
         pytest.skip(f"Solver '{solver_name}' is not available")
 

@@ -1,3 +1,5 @@
+"""Configuration loader tests."""
+
 from pathlib import Path
 
 from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
@@ -5,6 +7,7 @@ from grad_visit_scheduler.config import load_faculty_catalog, load_run_config
 
 
 def test_load_faculty_catalog():
+    """Verify faculty catalog parsing and alias loading."""
     faculty, aliases = load_faculty_catalog(
         Path(__file__).parents[1] / "examples" / "faculty_example.yaml"
     )
@@ -13,12 +16,14 @@ def test_load_faculty_catalog():
 
 
 def test_load_run_config():
+    """Verify run config parsing for expected keys."""
     run_cfg = load_run_config(Path(__file__).parents[1] / "examples" / "config_basic.yaml")
     assert "buildings" in run_cfg
     assert "faculty_availability" in run_cfg
 
 
 def test_scheduler_from_configs():
+    """Verify scheduler creation from config files."""
     root = Path(__file__).parents[1]
     s = scheduler_from_configs(
         root / "examples" / "faculty_example.yaml",
