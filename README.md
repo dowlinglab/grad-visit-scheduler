@@ -1,4 +1,4 @@
-# Grad Visitor Scheduler
+# Graduate Visit Scheduler
 
 [![Docs Latest](https://img.shields.io/badge/docs-latest-2E86C1?logo=readthedocs&logoColor=white)](https://grad-visit-scheduler.readthedocs.io/en/latest/)
 [![Docs Stable](https://img.shields.io/badge/docs-stable-2EA043?logo=readthedocs&logoColor=white)](https://grad-visit-scheduler.readthedocs.io/en/stable/)
