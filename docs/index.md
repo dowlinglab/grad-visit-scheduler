@@ -24,22 +24,22 @@ Outputs include:
 - Faculty-view and visitor-view schedule plots.
 - Optional DOCX exports of individualized visitor schedules.
 
-## Large Example Results
+## Scheduling Example
 
-The documentation includes a realistic worked example with 10 visitors, 6 faculty, two buildings (`ABC` and `XYZ`), topic areas (`Energy`, `Bio`, `Theory`), and faculty scheduling conflicts.
+The documentation includes a realistic worked example with 10 visitors, 6 faculty, two buildings (`ABC` and `XYZ`), three topic areas (`Energy`, `Bio`, `Theory`), and several faculty scheduling conflicts.
 
-Visitor-centered schedule:
+Visitor-view schedule:
 
 ![Visitor Schedule Example](_static/visitor_schedule_example.png)
 
-Faculty-centered schedule:
+Faculty-view schedule:
 
 ![Faculty Schedule Example](_static/faculty_schedule_example.png)
 
-How to read these plots:
+How to interpret these schedules:
 
 - `ABC` and `XYZ` are building abbreviations from the run config.
-- In visitor-view plots, labels are `Faculty (Building)` and blank slots indicate breaks/travel windows.
+- In visitor-view plots, labels are `Faculty (Building)` and blank slots indicate breaks or travel windows.
 - In faculty-view plots, the number in parentheses next to each faculty name is that faculty member's total number of scheduled meetings.
 
 Full setup, model details, and solver outputs are documented in [Quickstart](quickstart.md) and [Mathematical Formulation](formulation.md).
