@@ -87,14 +87,24 @@ def abbreviate_name(full_name):
     --------
     ``"Jane Doe" -> "Jane D."``
     ``"John Michael Doe" -> "John M. D."``
+
+    Notes
+    -----
+    If non-initial tokens are not alphabetic (for example ``"Visitor 01"``),
+    the original name is returned unchanged to avoid ambiguous labels.
     """
     if not full_name:  # Check for empty or None input
         return ""
 
+    full_name = str(full_name).strip()
     name_parts = full_name.split()
 
     if not name_parts:  # Check for empty after split
         return ""
+
+    # Avoid collapsing labels like "Visitor 01" into "Visitor 0."
+    if any(not any(ch.isalpha() for ch in part) for part in name_parts[1:]):
+        return full_name
 
     num_parts = len(name_parts)
 
