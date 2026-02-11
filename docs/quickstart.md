@@ -80,6 +80,18 @@ Common options on `schedule_visitors(...)`:
 
 ## 4) Inspect and export solutions
 
+Schedule plots from this example:
+
+![Visitor Schedule Example](_static/visitor_schedule_example.png)
+
+![Faculty Schedule Example](_static/faculty_schedule_example.png)
+
+How to interpret these plots:
+
+- `ABC` and `XYZ` are building abbreviations from `config_formulation.yaml`.
+- Visitor-view bars are labeled `Faculty (Building)`. Missing bars indicate breaks/travel slots.
+- In the faculty-view y-axis labels, the number in parentheses is each faculty member's total scheduled meetings.
+
 Generate a DOCX schedule:
 
 ```python
