@@ -1,4 +1,4 @@
-"""Sphinx configuration for Graduate Visitor Scheduler docs."""
+"""Sphinx configuration for Graduate Visit Scheduler docs."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-project = "Graduate Visitor Scheduler"
+project = "Graduate Visit Scheduler"
 author = "Dowling Lab"
 copyright = f"{datetime.now().year}, {author}"
 
@@ -59,4 +59,4 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "sphinx_rtd_theme"
-html_title = "Graduate Visitor Scheduler"
+html_title = "Graduate Visit Scheduler"

@@ -1,4 +1,4 @@
-# Graduate Visitor Scheduler
+# Graduate Visit Scheduler
 
 Mixed integer optimization-based scheduler for visitor-faculty meetings at department recruitment events. Created by [Alex Dowling](https://engineering.nd.edu/faculty/alexander-dowling/) and [Jeff Kantor](https://engineering.nd.edu/news/in-memoriam-jeffrey-kantor-former-vice-president-associate-provost-and-dean/) at the University of Notre Dame.
 
