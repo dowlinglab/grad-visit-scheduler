@@ -235,6 +235,125 @@ class SolutionSet:
             )
         return pd.DataFrame(rows)
 
+    def summarize(
+        self,
+        *,
+        compact_columns=None,
+        ranks_to_plot=(1, 2),
+        save_files=True,
+        show_solution_rank=True,
+        plot_prefix=None,
+        export_docx=False,
+        docx_prefix="visitor_schedule_top",
+    ):
+        """Build a reusable top-N solution review bundle.
+
+        This helper packages the common "inspect top-N solutions" workflow used
+        in examples and notebooks:
+
+        1. Build a full summary table with one row per ranked solution.
+        2. Build a compact summary view with key comparison columns.
+        3. Optionally generate visitor/faculty schedule plots for selected ranks.
+        4. Optionally export all ranked solutions to DOCX.
+
+        Parameters
+        ----------
+        compact_columns:
+            Optional list of column names to include in a compact comparison
+            table. If omitted, a default set of high-signal columns is used.
+        ranks_to_plot:
+            Iterable of 1-based ranks to render (for example ``(1, 2)``).
+            Invalid ranks are ignored.
+        save_files:
+            If ``True``, plotting helpers write files to disk and return their
+            paths in the output dictionary.
+        show_solution_rank:
+            If ``True``, append ``"(Solution Rank X)"`` to plot titles for
+            generated ranked-solution figures.
+        plot_prefix:
+            Optional run-name override used while generating plots. If provided,
+            output plot filenames become ``*_plot_prefix_rankX.*``.
+        export_docx:
+            If ``True``, export all ranked solutions to DOCX files.
+        docx_prefix:
+            Prefix used when ``export_docx=True``. Filenames are generated as
+            ``{docx_prefix}_rank{rank}.docx``.
+
+        Returns
+        -------
+        dict
+            Dictionary with the following keys:
+
+            - ``summary``: full summary dataframe from :meth:`to_dataframe`.
+            - ``compact``: compact comparison dataframe.
+            - ``plotted_ranks``: tuple of ranks that were plotted.
+            - ``visitor_plot_files``: tuple of PNG filenames (if saved).
+            - ``faculty_plot_files``: tuple of PNG filenames (if saved).
+            - ``docx_files``: tuple of exported DOCX filenames.
+
+        Notes
+        -----
+        - This helper is intentionally non-destructive: it restores the
+          scheduler run name after temporary overrides.
+        - Plot filenames are returned only when ``save_files=True``.
+        - Compact columns that are not present in the summary dataframe are
+          silently skipped.
+        """
+        summary = self.to_dataframe()
+        default_compact_columns = [
+            "rank",
+            "objective_value",
+            "objective_gap_from_best",
+            "num_assignments",
+            "num_group_slots",
+            "visitor_meetings_avg",
+            "faculty_meetings_avg",
+        ]
+        selected_columns = compact_columns if compact_columns is not None else default_compact_columns
+        compact_cols_present = [c for c in selected_columns if c in summary.columns]
+        compact = summary[compact_cols_present].copy()
+
+        visitor_plot_files = []
+        faculty_plot_files = []
+        plotted_ranks = []
+
+        original_run_name = getattr(self._scheduler, "run_name", "")
+        if plot_prefix is not None:
+            self._scheduler.run_name = plot_prefix
+        try:
+            for rank in ranks_to_plot:
+                if rank < 1 or rank > len(self.solutions):
+                    continue
+                plotted_ranks.append(rank)
+                if save_files:
+                    self.plot_visitor_schedule(rank=rank, save_files=True, show_solution_rank=show_solution_rank)
+                    self.plot_faculty_schedule(rank=rank, save_files=True, show_solution_rank=show_solution_rank)
+
+                    name_suffix = ""
+                    if len(self._scheduler.run_name) > 0:
+                        name_suffix = "_" + self._scheduler.run_name
+                    visitor_plot_files.append(f"visitor_schedule{name_suffix}_rank{rank}.png")
+                    faculty_plot_files.append(f"faculty_schedule{name_suffix}_rank{rank}.png")
+                else:
+                    self.plot_visitor_schedule(rank=rank, save_files=False, show_solution_rank=show_solution_rank)
+                    self.plot_faculty_schedule(rank=rank, save_files=False, show_solution_rank=show_solution_rank)
+        finally:
+            self._scheduler.run_name = original_run_name
+
+        docx_files = []
+        if export_docx:
+            for p in self.export_visitor_docx_all(prefix=docx_prefix):
+                docx_files.append(str(p))
+
+        return {
+            "summary": summary,
+            "compact": compact,
+            "plotted_ranks": tuple(plotted_ranks),
+            "visitor_plot_files": tuple(visitor_plot_files),
+            "faculty_plot_files": tuple(faculty_plot_files),
+            "docx_files": tuple(docx_files),
+        }
+
     def plot_faculty_schedule(self, rank=1, show_solution_rank=True, **kwargs):
         """Plot faculty schedule for the selected ranked solution."""
         return self._scheduler.show_faculty_schedule(

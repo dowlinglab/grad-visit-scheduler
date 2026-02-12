@@ -43,3 +43,4 @@ Formulation-focused example:
 
 Top-N example script:
 - `../scripts/run_top_n_example.py`: solves for the best three unique schedules using no-good cuts and writes rank-specific outputs.
+- Uses `SolutionSet.summarize(...)` to build summary tables and standardized rank-plot outputs.

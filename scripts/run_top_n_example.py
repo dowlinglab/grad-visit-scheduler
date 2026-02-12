@@ -39,13 +39,14 @@ if len(top) == 0:
     print(s.infeasibility_report())
 else:
     print("Found", len(top), "solution(s).")
-    print(top.to_dataframe().to_string(index=False))
-
-    top.plot_faculty_schedule(rank=1, save_files=True)
-    top.plot_visitor_schedule(rank=1, save_files=True)
-
-    if len(top) > 1:
-        top.plot_faculty_schedule(rank=2, save_files=True)
-        top.plot_visitor_schedule(rank=2, save_files=True)
-
-    top.export_visitor_docx_all(prefix="visitor_schedule_top")
+    report = top.summarize(
+        ranks_to_plot=(1, 2),
+        save_files=True,
+        show_solution_rank=True,
+        plot_prefix="top_n_demo",
+        export_docx=True,
+        docx_prefix="visitor_schedule_top",
+    )
+    print(report["summary"].to_string(index=False))
+    print("\nCompact comparison:")
+    print(report["compact"].to_string(index=False))

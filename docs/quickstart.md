@@ -133,14 +133,19 @@ top = s.schedule_visitors_top_n(
     run_name="formulation_top_n",
 )
 
-summary = top.to_dataframe()
+report = top.summarize(
+    ranks_to_plot=(1, 2),
+    save_files=True,
+    show_solution_rank=True,  # turn off for external-facing plots
+    plot_prefix="formulation_top_n",
+)
+
+summary = report["summary"]
+compact = report["compact"]
 print(summary)
-# Example: compact comparison view
-print(summary[["rank", "objective_value", "num_assignments", "num_group_slots"]])
+print(compact)
 
 if len(top) > 0:
-    top.plot_faculty_schedule(rank=1, save_files=True, show_solution_rank=True)
-    top.plot_visitor_schedule(rank=1, save_files=True, show_solution_rank=True)
     top.export_visitor_docx("visitor_schedule_rank1.docx", rank=1)
 ```
 
