@@ -189,13 +189,17 @@ class SolutionSet:
             ]
         )
 
-    def plot_faculty_schedule(self, rank=1, **kwargs):
+    def plot_faculty_schedule(self, rank=1, show_solution_rank=True, **kwargs):
         """Plot faculty schedule for the selected ranked solution."""
-        return self._scheduler.show_faculty_schedule(solution=self.get(rank), **kwargs)
+        return self._scheduler.show_faculty_schedule(
+            solution=self.get(rank), show_solution_rank=show_solution_rank, **kwargs
+        )
 
-    def plot_visitor_schedule(self, rank=1, **kwargs):
+    def plot_visitor_schedule(self, rank=1, show_solution_rank=True, **kwargs):
         """Plot visitor schedule for the selected ranked solution."""
-        return self._scheduler.show_visitor_schedule(solution=self.get(rank), **kwargs)
+        return self._scheduler.show_visitor_schedule(
+            solution=self.get(rank), show_solution_rank=show_solution_rank, **kwargs
+        )
 
     def export_visitor_docx(self, filename, rank=1, **kwargs):
         """Export a selected ranked solution to DOCX."""
@@ -1104,7 +1108,7 @@ class Scheduler:
             return tuple(m.visitors), tuple(m.faculty), tuple(m.time)
         return solution.visitors, solution.faculty, solution.time_slots
 
-    def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True, solution=None):
+    def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True, solution=None, show_solution_rank=False):
         """Plot the solved schedule grouped by faculty.
 
         Parameters
@@ -1116,6 +1120,9 @@ class Scheduler:
         solution:
             Optional :class:`SolutionResult` to plot. If omitted, uses the most
             recently solved model on this scheduler.
+        show_solution_rank:
+            If ``True`` and ``solution`` is provided, append solution rank to
+            the figure title.
         """
         if solution is None and not self.has_feasible_solution():
             raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
@@ -1155,7 +1162,10 @@ class Scheduler:
                 if students:
                     ax.text((start + stop)/2, -y, f"{students}", ha="center", va="center", fontsize=8)
             
-        ax.set_title("Schedule by Faculty")
+        title = "Schedule by Faculty"
+        if show_solution_rank and solution is not None:
+            title += f" (Solution Rank {solution.rank})"
+        ax.set_title(title)
         if save_files:
             name = 'faculty_schedule'
             if len(self.run_name) > 0:
@@ -1165,7 +1175,7 @@ class Scheduler:
             plt.savefig(name + ".pdf")
             plt.savefig(name + ".png")
     
-    def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True, solution=None):
+    def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True, solution=None, show_solution_rank=False):
         """Plot the solved schedule grouped by visitor.
 
         Parameters
@@ -1177,6 +1187,9 @@ class Scheduler:
         solution:
             Optional :class:`SolutionResult` to plot. If omitted, uses the most
             recently solved model on this scheduler.
+        show_solution_rank:
+            If ``True`` and ``solution`` is provided, append solution rank to
+            the figure title.
         """
         if solution is None and not self.has_feasible_solution():
             raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
@@ -1211,7 +1224,10 @@ class Scheduler:
                     text_color = "red" if self._is_legacy_faculty(f) else "black"
                     ax.text((start + stop)/2, -y, f"{f} ({bldg})", ha="center", va="center", fontsize=8, color=text_color)
 
-        ax.set_title("Schedule by Visitors")
+        title = "Schedule by Visitors"
+        if show_solution_rank and solution is not None:
+            title += f" (Solution Rank {solution.rank})"
+        ax.set_title(title)
         if save_files:
             name = 'visitor_schedule'
             if len(self.run_name) > 0:

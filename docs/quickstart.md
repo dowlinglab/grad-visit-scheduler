@@ -136,8 +136,8 @@ top = s.schedule_visitors_top_n(
 print(top.to_dataframe())
 
 if len(top) > 0:
-    top.plot_faculty_schedule(rank=1, save_files=True)
-    top.plot_visitor_schedule(rank=1, save_files=True)
+    top.plot_faculty_schedule(rank=1, save_files=True, show_solution_rank=True)
+    top.plot_visitor_schedule(rank=1, save_files=True, show_solution_rank=True)
     top.export_visitor_docx("visitor_schedule_rank1.docx", rank=1)
 ```
 
