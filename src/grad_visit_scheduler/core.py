@@ -175,19 +175,65 @@ class SolutionSet:
         return self.solutions[rank - 1]
 
     def to_dataframe(self):
-        """Return a summary dataframe of ranked solution quality."""
-        return pd.DataFrame(
-            [
+        """Return a summary dataframe of ranked solution quality statistics."""
+        rows = []
+        best_obj = self.solutions[0].objective_value if self.solutions else None
+        for s in self.solutions:
+            visitor_counts = {v: 0 for v in s.visitors}
+            faculty_counts = {f: 0 for f in s.faculty}
+            meeting_sizes = {}
+            requested_meetings = 0
+            weighted_preference_sum = 0.0
+            legacy_meetings = 0
+            external_meetings = 0
+
+            for visitor, faculty, time_slot in s.active_meetings:
+                visitor_counts[visitor] += 1
+                faculty_counts[faculty] += 1
+                meeting_sizes[(faculty, time_slot)] = meeting_sizes.get((faculty, time_slot), 0) + 1
+
+                weighted_preference_sum += float(
+                    self._scheduler.student_preferences.get((visitor, faculty), 0.0)
+                )
+                if faculty in self._scheduler.requests.get(visitor, []):
+                    requested_meetings += 1
+                if self._scheduler._is_legacy_faculty(faculty):
+                    legacy_meetings += 1
+                if faculty in self._scheduler.external_faculty:
+                    external_meetings += 1
+
+            visitor_loads = list(visitor_counts.values())
+            faculty_loads = list(faculty_counts.values())
+            one_on_one_slots = sum(1 for n in meeting_sizes.values() if n == 1)
+            group_slots = sum(1 for n in meeting_sizes.values() if n > 1)
+            max_group_size = max(meeting_sizes.values()) if meeting_sizes else 0
+
+            rows.append(
                 {
                     "rank": s.rank,
                     "objective_value": s.objective_value,
+                    "objective_gap_from_best": 0.0 if best_obj is None else float(best_obj - s.objective_value),
                     "termination_condition": s.termination_condition,
                     "solver_status": s.solver_status,
-                    "num_meetings": len(s.active_meetings),
+                    "num_assignments": len(s.active_meetings),
+                    "num_requested_assignments": requested_meetings,
+                    "weighted_preference_sum": weighted_preference_sum,
+                    "num_group_slots": group_slots,
+                    "num_one_on_one_slots": one_on_one_slots,
+                    "max_group_size": max_group_size,
+                    "num_visitors_scheduled": sum(1 for n in visitor_loads if n > 0),
+                    "visitor_meetings_min": min(visitor_loads) if visitor_loads else 0,
+                    "visitor_meetings_avg": float(np.mean(visitor_loads)) if visitor_loads else 0.0,
+                    "visitor_meetings_max": max(visitor_loads) if visitor_loads else 0,
+                    "num_faculty_scheduled": sum(1 for n in faculty_loads if n > 0),
+                    "faculty_meetings_min": min(faculty_loads) if faculty_loads else 0,
+                    "faculty_meetings_avg": float(np.mean(faculty_loads)) if faculty_loads else 0.0,
+                    "faculty_meetings_max": max(faculty_loads) if faculty_loads else 0,
+                    "legacy_assignments": legacy_meetings,
+                    "external_assignments": external_meetings,
                 }
-                for s in self.solutions
-            ]
-        )
+            )
+        return pd.DataFrame(rows)
 
     def plot_faculty_schedule(self, rank=1, show_solution_rank=True, **kwargs):
         """Plot faculty schedule for the selected ranked solution."""

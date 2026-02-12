@@ -133,7 +133,10 @@ top = s.schedule_visitors_top_n(
     run_name="formulation_top_n",
 )
 
-print(top.to_dataframe())
+summary = top.to_dataframe()
+print(summary)
+# Example: compact comparison view
+print(summary[["rank", "objective_value", "num_assignments", "num_group_slots"]])
 
 if len(top) > 0:
     top.plot_faculty_schedule(rank=1, save_files=True, show_solution_rank=True)
