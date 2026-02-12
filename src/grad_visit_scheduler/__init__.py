@@ -1,5 +1,5 @@
 """Grad visit scheduling package."""
-from .core import Scheduler, Mode, Solver, FacultyStatus
+from .core import Scheduler, Mode, Solver, FacultyStatus, SolutionResult, SolutionSet
 from .config import (
     load_faculty_catalog,
     load_run_config,
@@ -13,6 +13,8 @@ __all__ = [
     "Mode",
     "Solver",
     "FacultyStatus",
+    "SolutionResult",
+    "SolutionSet",
     "load_faculty_catalog",
     "load_run_config",
     "build_times_by_building",

@@ -12,6 +12,8 @@ Top-level imports provided by `grad_visit_scheduler`:
 - `Mode`
 - `Solver`
 - `FacultyStatus`
+- `SolutionResult`
+- `SolutionSet`
 - `scheduler_from_configs`
 - `load_faculty_catalog`
 - `load_run_config`

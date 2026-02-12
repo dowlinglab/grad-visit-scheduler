@@ -3,6 +3,7 @@
 import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
 from pyomo.core import Suffix
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,6 +12,7 @@ from math import isnan
 import re
 from enum import Enum
 from collections import Counter
+from pathlib import Path
 
 class Solver(Enum):
     """Supported optimization solver backends."""
@@ -132,6 +134,83 @@ DEFAULT_COLOR_CYCLE = [
     "#ffd6a5",
 ]
 BOX_ALPHA = 1.0
+
+
+@dataclass(frozen=True)
+class SolutionResult:
+    """Immutable solved schedule snapshot."""
+
+    rank: int
+    objective_value: float
+    termination_condition: str
+    solver_status: str
+    visitors: tuple[str, ...]
+    faculty: tuple[str, ...]
+    time_slots: tuple[int, ...]
+    active_meetings: frozenset[tuple[str, str, int]]
+
+    def meeting_assigned(self, visitor: str, faculty: str, time_slot: int) -> bool:
+        """Return whether the visitor/faculty/time assignment is active."""
+        return (visitor, faculty, time_slot) in self.active_meetings
+
+
+class SolutionSet:
+    """Collection of ranked feasible solutions for one scheduler run."""
+
+    def __init__(self, scheduler, solutions):
+        self._scheduler = scheduler
+        self.solutions = tuple(solutions)
+
+    def __len__(self):
+        return len(self.solutions)
+
+    def best(self):
+        """Return the top-ranked solution, if present."""
+        return self.get(1)
+
+    def get(self, rank: int):
+        """Return a ranked solution (1-based rank)."""
+        if rank < 1 or rank > len(self.solutions):
+            raise IndexError(f"Rank {rank} is out of bounds for {len(self.solutions)} solutions.")
+        return self.solutions[rank - 1]
+
+    def to_dataframe(self):
+        """Return a summary dataframe of ranked solution quality."""
+        return pd.DataFrame(
+            [
+                {
+                    "rank": s.rank,
+                    "objective_value": s.objective_value,
+                    "termination_condition": s.termination_condition,
+                    "solver_status": s.solver_status,
+                    "num_meetings": len(s.active_meetings),
+                }
+                for s in self.solutions
+            ]
+        )
+
+    def plot_faculty_schedule(self, rank=1, **kwargs):
+        """Plot faculty schedule for the selected ranked solution."""
+        return self._scheduler.show_faculty_schedule(solution=self.get(rank), **kwargs)
+
+    def plot_visitor_schedule(self, rank=1, **kwargs):
+        """Plot visitor schedule for the selected ranked solution."""
+        return self._scheduler.show_visitor_schedule(solution=self.get(rank), **kwargs)
+
+    def export_visitor_docx(self, filename, rank=1, **kwargs):
+        """Export a selected ranked solution to DOCX."""
+        return self._scheduler.export_visitor_docx(filename, solution=self.get(rank), **kwargs)
+
+    def export_visitor_docx_all(self, prefix="visitor_schedule", suffix=".docx", **kwargs):
+        """Export all ranked solutions to separate DOCX files."""
+        output_paths = []
+        for solution in self.solutions:
+            filename = Path(f"{prefix}_rank{solution.rank}{suffix}")
+            output_paths.append(
+                self._scheduler.export_visitor_docx(filename, solution=solution, **kwargs)
+            )
+        return output_paths
+
 
 class Scheduler:
     """Scheduler for assigning visitor-faculty meetings across time slots."""
@@ -604,6 +683,64 @@ class Scheduler:
         self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
         self._solve_model(tee)
         self.run_name = run_name
+        self.last_solution_set = None
+
+    def schedule_visitors_top_n(
+        self,
+        n_solutions=5,
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=8,
+        min_faculty=0,
+        max_group=2,
+        enforce_breaks=False,
+        tee=False,
+        run_name='',
+    ):
+        """Solve for up to the best ``n_solutions`` unique schedules.
+
+        Uses no-good integer cuts over the full assignment vector ``y[s, f, t]``
+        so each returned solution differs from all previous solutions.
+        """
+        if n_solutions < 1:
+            raise ValueError("n_solutions must be at least 1")
+
+        self.last_solve_params = {
+            "group_penalty": group_penalty,
+            "min_visitors": min_visitors,
+            "max_visitors": max_visitors,
+            "min_faculty": min_faculty,
+            "max_group": max_group,
+            "enforce_breaks": enforce_breaks,
+            "n_solutions": n_solutions,
+        }
+        self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
+        self.run_name = run_name
+
+        solutions = []
+        for rank in range(1, n_solutions + 1):
+            results = self._solve_model(tee, record_results=False)
+            termination = results.solver.termination_condition
+            status = results.solver.status
+
+            if termination not in [TerminationCondition.optimal, TerminationCondition.feasible]:
+                if not solutions:
+                    self.results = results
+                    self.last_termination_condition = termination
+                    self.last_solver_status = status
+                break
+
+            self.results = results
+            self.last_termination_condition = termination
+            self.last_solver_status = status
+
+            solution = self._snapshot_solution(rank=rank)
+            solutions.append(solution)
+            self._add_no_good_cut(solution)
+
+        solution_set = SolutionSet(self, solutions)
+        self.last_solution_set = solution_set
+        return solution_set
 
     def _build_model(self, group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks=False):
         """Build the Pyomo MILP model for the current scheduler state.
@@ -806,7 +943,7 @@ class Scheduler:
 
         self.model = m
         
-    def _solve_model(self, tee):
+    def _solve_model(self, tee, record_results=True):
         """Solve the currently built model with the configured solver backend.
 
         Parameters
@@ -854,9 +991,55 @@ class Scheduler:
             for component, value in self.model.iis.items():
                 print(component.name + " " + str(value))
         
-        self.results = results
-        self.last_termination_condition = results.solver.termination_condition
-        self.last_solver_status = results.solver.status
+        if record_results:
+            self.results = results
+            self.last_termination_condition = results.solver.termination_condition
+            self.last_solver_status = results.solver.status
+        return results
+
+    def _snapshot_solution(self, rank):
+        """Capture the current solved model values as an immutable snapshot."""
+        m = self.model
+        visitors = tuple(str(s) for s in m.visitors)
+        faculty = tuple(str(f) for f in m.faculty)
+        time_slots = tuple(int(t) for t in m.time)
+        active_meetings = frozenset(
+            (str(s), str(f), int(t))
+            for s in m.visitors
+            for f in m.faculty
+            for t in m.time
+            if m.y[s, f, t]() >= 0.5
+        )
+        return SolutionResult(
+            rank=rank,
+            objective_value=float(pyo.value(m.obj)),
+            termination_condition=str(self.last_termination_condition),
+            solver_status=str(self.last_solver_status),
+            visitors=visitors,
+            faculty=faculty,
+            time_slots=time_slots,
+            active_meetings=active_meetings,
+        )
+
+    def _add_no_good_cut(self, solution):
+        """Exclude an already-found binary assignment from future solves."""
+        m = self.model
+        if not hasattr(m, "no_good_cuts"):
+            m.no_good_cuts = pyo.ConstraintList()
+
+        all_indices = [(s, f, t) for s in m.visitors for f in m.faculty for t in m.time]
+        active_indices = {
+            (s, f, t)
+            for s in m.visitors
+            for f in m.faculty
+            for t in m.time
+            if solution.meeting_assigned(str(s), str(f), int(t))
+        }
+        m.no_good_cuts.add(
+            sum(1 - m.y[s, f, t] for (s, f, t) in active_indices)
+            + sum(m.y[s, f, t] for (s, f, t) in all_indices if (s, f, t) not in active_indices)
+            >= 1
+        )
 
     def has_feasible_solution(self):
         """Return ``True`` if the latest solver run was feasible or optimal."""
@@ -908,7 +1091,20 @@ class Scheduler:
         lines.append("Try reducing min_faculty/min_visitors or loosening availability.")
         return "\n".join(lines)
 
-    def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True):
+    def _meeting_assigned(self, visitor, faculty, time_slot, solution=None):
+        """Return meeting assignment value (0/1) for model or snapshot solution."""
+        if solution is None:
+            return self.model.y[visitor, faculty, time_slot]() >= 0.5
+        return solution.meeting_assigned(str(visitor), str(faculty), int(time_slot))
+
+    def _solution_axes_sets(self, solution=None):
+        """Return iterable visitors/faculty/time set for model or snapshot solution."""
+        if solution is None:
+            m = self.model
+            return tuple(m.visitors), tuple(m.faculty), tuple(m.time)
+        return solution.visitors, solution.faculty, solution.time_slots
+
+    def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True, solution=None):
         """Plot the solved schedule grouped by faculty.
 
         Parameters
@@ -917,24 +1113,30 @@ class Scheduler:
             If ``True``, save ``faculty_schedule*.pdf`` and ``.png``.
         abbreviate_student_names:
             If ``True``, shorten visitor names in labels.
+        solution:
+            Optional :class:`SolutionResult` to plot. If omitted, uses the most
+            recently solved model on this scheduler.
         """
-        if not self.has_feasible_solution():
+        if solution is None and not self.has_feasible_solution():
             raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
-        m = self.model
+        visitors, faculty, time_slots = self._solution_axes_sets(solution=solution)
         ax = schedule_axes(figsize=(12, 10), nslots=self.number_time_slots)
 
         # Draw axes and ticks (background)
-        yticks = [-y for y, f in enumerate(m.faculty)]
-        ylabels = [f"{f} {self.faculty[f]['building']} ({sum(m.y[s, f, t]() for s in m.visitors for t in m.time):0.0f})" for f in m.faculty]
+        yticks = [-y for y, f in enumerate(faculty)]
+        ylabels = [
+            f"{f} {self.faculty[f]['building']} ({sum(1 for s in visitors for t in time_slots if self._meeting_assigned(s, f, t, solution=solution)):0.0f})"
+            for f in faculty
+        ]
         ax.set_yticks(yticks, labels=ylabels)
-        for f, label in zip(m.faculty, ax.get_yticklabels()):
+        for f, label in zip(faculty, ax.get_yticklabels()):
             if self._is_legacy_faculty(f):
                 label.set_color("red")
         for y in yticks:
             ax.axhline(y, lw=0.4, alpha=0.3, color='b')
             
         # Draw schedule (foreground)
-        for y, f in enumerate(m.faculty):
+        for y, f in enumerate(faculty):
             for t in self.faculty[f]["avail"]:
                 bldg = self.faculty[f]["building"]
                 start, stop = slot2min(self.times_by_building[bldg][t-1])
@@ -946,7 +1148,7 @@ class Scheduler:
                     alpha=BOX_ALPHA,
                     solid_capstyle="butt",
                 )
-                students = [s for s in m.visitors if m.y[s, f, t]() >= 0.5]
+                students = [s for s in visitors if self._meeting_assigned(s, f, t, solution=solution)]
                 if abbreviate_student_names:
                     students = [abbreviate_name(s) for s in students]
                 students = '\n '.join(students)
@@ -958,10 +1160,12 @@ class Scheduler:
             name = 'faculty_schedule'
             if len(self.run_name) > 0:
                 name += '_' + self.run_name
+            if solution is not None:
+                name += f"_rank{solution.rank}"
             plt.savefig(name + ".pdf")
             plt.savefig(name + ".png")
     
-    def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True):
+    def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True, solution=None):
         """Plot the solved schedule grouped by visitor.
 
         Parameters
@@ -970,14 +1174,17 @@ class Scheduler:
             If ``True``, save ``visitor_schedule*.pdf`` and ``.png``.
         abbreviate_student_names:
             If ``True``, shorten visitor names in y-axis labels.
+        solution:
+            Optional :class:`SolutionResult` to plot. If omitted, uses the most
+            recently solved model on this scheduler.
         """
-        if not self.has_feasible_solution():
+        if solution is None and not self.has_feasible_solution():
             raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
-        m = self.model
+        visitors, faculty, time_slots = self._solution_axes_sets(solution=solution)
         ax = schedule_axes(figsize=(12, 10), nslots=self.number_time_slots)
         
         # Draw axes and ticks (background)
-        students = [s for s in m.visitors]
+        students = [s for s in visitors]
         if abbreviate_student_names:
             students = [abbreviate_name(s) for s in students]
         yticks = [-y for y, f in enumerate(students)]
@@ -986,9 +1193,9 @@ class Scheduler:
             ax.axhline(y, lw=0.4, alpha=0.3, color='b')
         
         # Draw schedule (foreground)
-        for y, s in enumerate(m.visitors):
-            for t in m.time:
-                f = [f for f in m.faculty if m.y[s, f, t]() >= 0.5]
+        for y, s in enumerate(visitors):
+            for t in time_slots:
+                f = [f for f in faculty if self._meeting_assigned(s, f, t, solution=solution)]
                 if f:
                     f = f[0]
                     bldg = self.faculty[f]["building"]
@@ -1009,10 +1216,12 @@ class Scheduler:
             name = 'visitor_schedule'
             if len(self.run_name) > 0:
                 name += '_' + self.run_name
+            if solution is not None:
+                name += f"_rank{solution.rank}"
             plt.savefig(name + ".pdf")
             plt.savefig(name + ".png")
 
-    def export_visitor_docx(self, filename, **kwargs):
+    def export_visitor_docx(self, filename, solution=None, **kwargs):
         """Export solved visitor schedules to a DOCX file.
 
         Parameters
@@ -1025,7 +1234,7 @@ class Scheduler:
         """
         from .export import export_visitor_docx
 
-        return export_visitor_docx(self, filename, **kwargs)
+        return export_visitor_docx(self, filename, solution=solution, **kwargs)
         
     def show_utility(self):
         """Plot realized meetings and display total utility for a solved model."""

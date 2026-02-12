@@ -101,6 +101,13 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.
 
+To generate multiple ranked schedules, use no-good cuts:
+
+```python
+top = s.schedule_visitors_top_n(n_solutions=3, enforce_breaks=True)
+print(top.to_dataframe())
+```
+
 ## Export DOCX
 
 You can optionally export customized visitor schedules to a DOCX file. This facilitates easy copy/paste into individualized agendas for each visitor.

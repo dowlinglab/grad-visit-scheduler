@@ -40,3 +40,6 @@ Formulation-focused example:
 - `faculty_formulation.yaml`: six-faculty catalog (`Prof. A` to `Prof. F`) used in docs.
 - `config_formulation.yaml`: buildings `ABC` and `XYZ`, four slots, and two break options (`[2, 3]`), with faculty-specific availability conflicts.
 - `data_formulation_visitors.csv`: ten visitors with ranked faculty preferences plus topic interests (`Energy`, `Bio`, `Theory`).
+
+Top-N example script:
+- `../scripts/run_top_n_example.py`: solves for the best three unique schedules using no-good cuts and writes rank-specific outputs.

@@ -8,6 +8,7 @@ def export_visitor_docx(
     scheduler,
     filename,
     *,
+    solution=None,
     building: str | None = None,
     font_name: str = "Arial",
     font_size_pt: int = 11,
@@ -21,6 +22,9 @@ def export_visitor_docx(
         Solved scheduler instance containing ``model`` and metadata.
     filename:
         Output DOCX filename.
+    solution:
+        Optional ``SolutionResult`` snapshot to export. If omitted, uses the
+        scheduler's most recently solved model assignment.
     building:
         Building key used to pick displayed time labels. Defaults to the first
         configured building.
@@ -43,7 +47,7 @@ def export_visitor_docx(
     ImportError
         If ``python-docx`` is not installed.
     """
-    if not scheduler.has_feasible_solution():
+    if solution is None and not scheduler.has_feasible_solution():
         raise RuntimeError(
             f"No feasible solution available (termination: {getattr(scheduler, 'last_termination_condition', None)})."
         )
@@ -62,32 +66,32 @@ def export_visitor_docx(
         run.font.size = Pt(font_size_pt)
         run.font.name = font_name
 
-    m = scheduler.model
     if building is None:
         building = next(iter(scheduler.times_by_building))
 
     times = scheduler.times_by_building[building]
+    visitors, faculty, time_slots = scheduler._solution_axes_sets(solution=solution)
 
-    for visitor in m.visitors:
+    for visitor in visitors:
         p = document.add_paragraph()
         run = p.add_run(visitor)
         format_font(run)
 
-        table = document.add_table(rows=len(m.time), cols=3)
+        table = document.add_table(rows=len(time_slots), cols=3)
 
-        for i, t in enumerate(m.time):
+        for i, t in enumerate(time_slots):
             row = table.rows[i].cells
 
             tm = times[t - 1]
             start, end = tm.split("-")
             row[0].text = f"{start.strip()} - {end.strip()} pm"
 
-            faculty = [f for f in m.faculty if m.y[visitor, f, t]() >= 0.5]
-            if faculty:
-                faculty = faculty[0]
-                bldg = scheduler.faculty[faculty]["building"]
-                row[1].text = "Prof. " + faculty
-                row[2].text = scheduler.faculty[faculty]["room"] + " " + bldg
+            matched_faculty = [f for f in faculty if scheduler._meeting_assigned(visitor, f, t, solution=solution)]
+            if matched_faculty:
+                matched = matched_faculty[0]
+                bldg = scheduler.faculty[matched]["building"]
+                row[1].text = "Prof. " + matched
+                row[2].text = scheduler.faculty[matched]["room"] + " " + bldg
             elif include_breaks:
                 row[1].text = "Break"
                 row[2].text = " "
