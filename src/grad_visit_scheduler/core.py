@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import warnings
 from math import isnan
 import re
 from enum import Enum
@@ -1528,6 +1529,13 @@ class Scheduler:
             If ``True`` and ``solution`` is provided, append solution rank to
             the figure title.
         """
+        warnings.warn(
+            "Scheduler.show_faculty_schedule(...) is a legacy interface. "
+            "Prefer SolutionResult.plot_faculty_schedule(...) via "
+            "Scheduler.last_solution_set.get(rank) or SolutionSet.plot_faculty_schedule(...).",
+            FutureWarning,
+            stacklevel=2,
+        )
         from_scheduler_state = solution is None
         chosen = solution if solution is not None else self._current_solution_result()
         return chosen.plot_faculty_schedule(
@@ -1553,6 +1561,13 @@ class Scheduler:
             If ``True`` and ``solution`` is provided, append solution rank to
             the figure title.
         """
+        warnings.warn(
+            "Scheduler.show_visitor_schedule(...) is a legacy interface. "
+            "Prefer SolutionResult.plot_visitor_schedule(...) via "
+            "Scheduler.last_solution_set.get(rank) or SolutionSet.plot_visitor_schedule(...).",
+            FutureWarning,
+            stacklevel=2,
+        )
         from_scheduler_state = solution is None
         chosen = solution if solution is not None else self._current_solution_result()
         return chosen.plot_visitor_schedule(
@@ -1573,6 +1588,13 @@ class Scheduler:
             Additional keyword arguments forwarded to
             :func:`grad_visit_scheduler.export.export_visitor_docx`.
         """
+        warnings.warn(
+            "Scheduler.export_visitor_docx(...) is a legacy interface. "
+            "Prefer SolutionResult.export_visitor_docx(...) via "
+            "Scheduler.last_solution_set.get(rank) or SolutionSet.export_visitor_docx(...).",
+            FutureWarning,
+            stacklevel=2,
+        )
         chosen = solution if solution is not None else self._current_solution_result()
         return chosen.export_visitor_docx(filename, **kwargs)
         

@@ -1,5 +1,6 @@
 """Export helpers."""
 from __future__ import annotations
+import warnings
 
 
 def export_visitor_docx(
@@ -46,6 +47,13 @@ def export_visitor_docx(
         If ``python-docx`` is not installed.
     """
     chosen = solution if solution is not None else scheduler._current_solution_result()
+    warnings.warn(
+        "grad_visit_scheduler.export_visitor_docx(...) is a legacy helper. "
+        "Prefer SolutionResult.export_visitor_docx(...) via "
+        "Scheduler.last_solution_set.get(rank) or SolutionSet.export_visitor_docx(...).",
+        FutureWarning,
+        stacklevel=2,
+    )
     return chosen.export_visitor_docx(
         filename,
         building=building,
