@@ -3,7 +3,7 @@
 import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
 from pyomo.core import Suffix
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -137,8 +137,63 @@ BOX_ALPHA = 1.0
 
 
 @dataclass(frozen=True)
+class SolutionContext:
+    """Immutable rendering and reporting context shared by solution snapshots."""
+
+    times_by_building: dict[str, tuple[str, ...]]
+    faculty: dict[str, dict[str, object]]
+    box_colors: dict[str, str]
+    number_time_slots: int
+    run_name: str
+    student_preferences: dict[tuple[str, str], float]
+    requests: dict[str, tuple[str, ...]]
+    legacy_faculty: frozenset[str]
+    external_faculty: frozenset[str]
+
+    def is_legacy(self, faculty_name: str) -> bool:
+        """Return whether a faculty entry is marked legacy."""
+        return faculty_name in self.legacy_faculty
+
+    def is_external(self, faculty_name: str) -> bool:
+        """Return whether a faculty entry is marked external."""
+        return faculty_name in self.external_faculty
+
+
+@dataclass(frozen=True)
 class SolutionResult:
-    """Immutable solved schedule snapshot."""
+    """Rich, self-contained representation of one solved schedule.
+
+    A ``SolutionResult`` is intentionally independent from the mutable
+    :class:`Scheduler` and Pyomo model state. It contains all assignment and
+    metadata needed to:
+
+    - inspect per-solution quality statistics,
+    - produce schedule visualizations,
+    - export visitor DOCX schedules,
+    - serialize/pickle for later analysis.
+
+    Parameters
+    ----------
+    rank:
+        1-based rank in the top-N solve sequence.
+    objective_value:
+        Objective value for this ranked solution.
+    termination_condition:
+        Solver termination label (string form).
+    solver_status:
+        Solver status label (string form).
+    visitors:
+        Ordered visitor labels included in the solved model.
+    faculty:
+        Ordered faculty labels included in the solved model.
+    time_slots:
+        Ordered integer time-slot indices.
+    active_meetings:
+        Set of active binary assignments ``(visitor, faculty, slot)``.
+    context:
+        Immutable rendering/reporting context copied from the scheduler at solve
+        time (times, faculty metadata, colors, preferences, requests, etc.).
+    """
 
     rank: int
     objective_value: float
@@ -148,17 +203,239 @@ class SolutionResult:
     faculty: tuple[str, ...]
     time_slots: tuple[int, ...]
     active_meetings: frozenset[tuple[str, str, int]]
+    context: SolutionContext
 
     def meeting_assigned(self, visitor: str, faculty: str, time_slot: int) -> bool:
         """Return whether the visitor/faculty/time assignment is active."""
         return (visitor, faculty, time_slot) in self.active_meetings
 
+    def _meeting_sizes(self):
+        meeting_sizes = {}
+        for _, faculty, time_slot in self.active_meetings:
+            key = (faculty, time_slot)
+            meeting_sizes[key] = meeting_sizes.get(key, 0) + 1
+        return meeting_sizes
+
+    def summary_row(self, best_objective=None):
+        """Return one summary row dictionary for this solution."""
+        visitor_counts = {v: 0 for v in self.visitors}
+        faculty_counts = {f: 0 for f in self.faculty}
+        requested_meetings = 0
+        weighted_preference_sum = 0.0
+        legacy_meetings = 0
+        external_meetings = 0
+
+        for visitor, faculty, _ in self.active_meetings:
+            visitor_counts[visitor] += 1
+            faculty_counts[faculty] += 1
+            weighted_preference_sum += float(
+                self.context.student_preferences.get((visitor, faculty), 0.0)
+            )
+            if faculty in self.context.requests.get(visitor, ()):
+                requested_meetings += 1
+            if self.context.is_legacy(faculty):
+                legacy_meetings += 1
+            if self.context.is_external(faculty):
+                external_meetings += 1
+
+        meeting_sizes = self._meeting_sizes()
+        visitor_loads = list(visitor_counts.values())
+        faculty_loads = list(faculty_counts.values())
+
+        return {
+            "rank": self.rank,
+            "objective_value": self.objective_value,
+            "objective_gap_from_best": 0.0 if best_objective is None else float(best_objective - self.objective_value),
+            "termination_condition": self.termination_condition,
+            "solver_status": self.solver_status,
+            "num_assignments": len(self.active_meetings),
+            "num_requested_assignments": requested_meetings,
+            "weighted_preference_sum": weighted_preference_sum,
+            "num_group_slots": sum(1 for n in meeting_sizes.values() if n > 1),
+            "num_one_on_one_slots": sum(1 for n in meeting_sizes.values() if n == 1),
+            "max_group_size": max(meeting_sizes.values()) if meeting_sizes else 0,
+            "num_visitors_scheduled": sum(1 for n in visitor_loads if n > 0),
+            "visitor_meetings_min": min(visitor_loads) if visitor_loads else 0,
+            "visitor_meetings_avg": float(np.mean(visitor_loads)) if visitor_loads else 0.0,
+            "visitor_meetings_max": max(visitor_loads) if visitor_loads else 0,
+            "num_faculty_scheduled": sum(1 for n in faculty_loads if n > 0),
+            "faculty_meetings_min": min(faculty_loads) if faculty_loads else 0,
+            "faculty_meetings_avg": float(np.mean(faculty_loads)) if faculty_loads else 0.0,
+            "faculty_meetings_max": max(faculty_loads) if faculty_loads else 0,
+            "legacy_assignments": legacy_meetings,
+            "external_assignments": external_meetings,
+        }
+
+    def _schedule_filename(self, base: str, include_rank: bool = True, suffix: str = ""):
+        name = base
+        if self.context.run_name:
+            name += "_" + self.context.run_name
+        if include_rank:
+            name += f"_rank{self.rank}"
+        if suffix:
+            name += suffix
+        return name
+
+    def plot_faculty_schedule(
+        self,
+        save_files=True,
+        abbreviate_student_names=True,
+        show_solution_rank=False,
+        include_rank_in_filename=True,
+    ):
+        """Plot schedule grouped by faculty for this single solution."""
+        ax = schedule_axes(figsize=(12, 10), nslots=self.context.number_time_slots)
+        yticks = [-y for y, _ in enumerate(self.faculty)]
+        ylabels = [
+            f"{f} {self.context.faculty[f]['building']} ({sum(1 for s in self.visitors for t in self.time_slots if self.meeting_assigned(s, f, t)):0.0f})"
+            for f in self.faculty
+        ]
+        ax.set_yticks(yticks, labels=ylabels)
+        for f, label in zip(self.faculty, ax.get_yticklabels()):
+            if self.context.is_legacy(f):
+                label.set_color("red")
+        for y in yticks:
+            ax.axhline(y, lw=0.4, alpha=0.3, color="b")
+
+        for y, f in enumerate(self.faculty):
+            for t in self.context.faculty[f]["avail"]:
+                bldg = self.context.faculty[f]["building"]
+                start, stop = slot2min(self.context.times_by_building[bldg][t - 1])
+                ax.plot(
+                    [start, stop],
+                    [-y, -y],
+                    lw=20,
+                    color=self.context.box_colors.get(bldg, "#cccccc"),
+                    alpha=BOX_ALPHA,
+                    solid_capstyle="butt",
+                )
+                students = [s for s in self.visitors if self.meeting_assigned(s, f, t)]
+                if abbreviate_student_names:
+                    students = [abbreviate_name(s) for s in students]
+                if students:
+                    ax.text((start + stop) / 2, -y, "\n ".join(students), ha="center", va="center", fontsize=8)
+
+        title = "Schedule by Faculty"
+        if show_solution_rank:
+            title += f" (Solution Rank {self.rank})"
+        ax.set_title(title)
+        if save_files:
+            name = self._schedule_filename("faculty_schedule", include_rank=include_rank_in_filename)
+            plt.savefig(name + ".pdf")
+            plt.savefig(name + ".png")
+            return (name + ".png", name + ".pdf")
+        return None
+
+    def plot_visitor_schedule(
+        self,
+        save_files=True,
+        abbreviate_student_names=True,
+        show_solution_rank=False,
+        include_rank_in_filename=True,
+    ):
+        """Plot schedule grouped by visitor for this single solution."""
+        ax = schedule_axes(figsize=(12, 10), nslots=self.context.number_time_slots)
+        students = [abbreviate_name(s) if abbreviate_student_names else s for s in self.visitors]
+        yticks = [-y for y, _ in enumerate(students)]
+        ax.set_yticks(yticks, labels=students)
+        for y in yticks:
+            ax.axhline(y, lw=0.4, alpha=0.3, color="b")
+
+        for y, s in enumerate(self.visitors):
+            for t in self.time_slots:
+                matched = [f for f in self.faculty if self.meeting_assigned(s, f, t)]
+                if not matched:
+                    continue
+                f = matched[0]
+                bldg = self.context.faculty[f]["building"]
+                start, stop = slot2min(self.context.times_by_building[bldg][t - 1])
+                ax.plot(
+                    [start, stop],
+                    [-y, -y],
+                    lw=20,
+                    color=self.context.box_colors.get(bldg, "#cccccc"),
+                    alpha=BOX_ALPHA,
+                    solid_capstyle="butt",
+                )
+                text_color = "red" if self.context.is_legacy(f) else "black"
+                ax.text((start + stop) / 2, -y, f"{f} ({bldg})", ha="center", va="center", fontsize=8, color=text_color)
+
+        title = "Schedule by Visitors"
+        if show_solution_rank:
+            title += f" (Solution Rank {self.rank})"
+        ax.set_title(title)
+        if save_files:
+            name = self._schedule_filename("visitor_schedule", include_rank=include_rank_in_filename)
+            plt.savefig(name + ".pdf")
+            plt.savefig(name + ".png")
+            return (name + ".png", name + ".pdf")
+        return None
+
+    def export_visitor_docx(
+        self,
+        filename,
+        *,
+        building: str | None = None,
+        font_name: str = "Arial",
+        font_size_pt: int = 11,
+        include_breaks: bool = True,
+    ):
+        """Export this solution to a visitor schedule DOCX file."""
+        try:
+            from docx import Document
+            from docx.shared import Pt
+        except Exception as exc:  # pragma: no cover - environment dependent
+            raise ImportError("python-docx is required to export schedules to .docx") from exc
+
+        output_path = Path(filename)
+        document = Document()
+
+        def format_font(run):
+            run.font.size = Pt(font_size_pt)
+            run.font.name = font_name
+
+        if building is None:
+            building = next(iter(self.context.times_by_building))
+        times = self.context.times_by_building[building]
+
+        for visitor in self.visitors:
+            p = document.add_paragraph()
+            run = p.add_run(visitor)
+            format_font(run)
+
+            table = document.add_table(rows=len(self.time_slots), cols=3)
+            for i, t in enumerate(self.time_slots):
+                row = table.rows[i].cells
+                start, end = times[t - 1].split("-")
+                row[0].text = f"{start.strip()} - {end.strip()} pm"
+
+                matched = [f for f in self.faculty if self.meeting_assigned(visitor, f, t)]
+                if matched:
+                    f = matched[0]
+                    bldg = self.context.faculty[f]["building"]
+                    row[1].text = "Prof. " + f
+                    row[2].text = self.context.faculty[f]["room"] + " " + bldg
+                elif include_breaks:
+                    row[1].text = "Break"
+                    row[2].text = " "
+
+                for j in range(3):
+                    if row[j].paragraphs and row[j].paragraphs[0].runs:
+                        format_font(row[j].paragraphs[0].runs[0])
+                    elif row[j].paragraphs:
+                        run = row[j].paragraphs[0].add_run("")
+                        format_font(run)
+
+            document.add_paragraph(" ")
+
+        document.save(str(output_path))
+        return output_path
+
 
 class SolutionSet:
-    """Collection of ranked feasible solutions for one scheduler run."""
+    """Collection object for ranked :class:`SolutionResult` instances."""
 
-    def __init__(self, scheduler, solutions):
-        self._scheduler = scheduler
+    def __init__(self, solutions):
         self.solutions = tuple(solutions)
 
     def __len__(self):
@@ -176,64 +453,8 @@ class SolutionSet:
 
     def to_dataframe(self):
         """Return a summary dataframe of ranked solution quality statistics."""
-        rows = []
         best_obj = self.solutions[0].objective_value if self.solutions else None
-        for s in self.solutions:
-            visitor_counts = {v: 0 for v in s.visitors}
-            faculty_counts = {f: 0 for f in s.faculty}
-            meeting_sizes = {}
-            requested_meetings = 0
-            weighted_preference_sum = 0.0
-            legacy_meetings = 0
-            external_meetings = 0
-
-            for visitor, faculty, time_slot in s.active_meetings:
-                visitor_counts[visitor] += 1
-                faculty_counts[faculty] += 1
-                meeting_sizes[(faculty, time_slot)] = meeting_sizes.get((faculty, time_slot), 0) + 1
-
-                weighted_preference_sum += float(
-                    self._scheduler.student_preferences.get((visitor, faculty), 0.0)
-                )
-                if faculty in self._scheduler.requests.get(visitor, []):
-                    requested_meetings += 1
-                if self._scheduler._is_legacy_faculty(faculty):
-                    legacy_meetings += 1
-                if faculty in self._scheduler.external_faculty:
-                    external_meetings += 1
-
-            visitor_loads = list(visitor_counts.values())
-            faculty_loads = list(faculty_counts.values())
-            one_on_one_slots = sum(1 for n in meeting_sizes.values() if n == 1)
-            group_slots = sum(1 for n in meeting_sizes.values() if n > 1)
-            max_group_size = max(meeting_sizes.values()) if meeting_sizes else 0
-
-            rows.append(
-                {
-                    "rank": s.rank,
-                    "objective_value": s.objective_value,
-                    "objective_gap_from_best": 0.0 if best_obj is None else float(best_obj - s.objective_value),
-                    "termination_condition": s.termination_condition,
-                    "solver_status": s.solver_status,
-                    "num_assignments": len(s.active_meetings),
-                    "num_requested_assignments": requested_meetings,
-                    "weighted_preference_sum": weighted_preference_sum,
-                    "num_group_slots": group_slots,
-                    "num_one_on_one_slots": one_on_one_slots,
-                    "max_group_size": max_group_size,
-                    "num_visitors_scheduled": sum(1 for n in visitor_loads if n > 0),
-                    "visitor_meetings_min": min(visitor_loads) if visitor_loads else 0,
-                    "visitor_meetings_avg": float(np.mean(visitor_loads)) if visitor_loads else 0.0,
-                    "visitor_meetings_max": max(visitor_loads) if visitor_loads else 0,
-                    "num_faculty_scheduled": sum(1 for n in faculty_loads if n > 0),
-                    "faculty_meetings_min": min(faculty_loads) if faculty_loads else 0,
-                    "faculty_meetings_avg": float(np.mean(faculty_loads)) if faculty_loads else 0.0,
-                    "faculty_meetings_max": max(faculty_loads) if faculty_loads else 0,
-                    "legacy_assignments": legacy_meetings,
-                    "external_assignments": external_meetings,
-                }
-            )
-        return pd.DataFrame(rows)
+        return pd.DataFrame([s.summary_row(best_objective=best_obj) for s in self.solutions])
 
     def summarize(
         self,
@@ -317,28 +538,27 @@ class SolutionSet:
         faculty_plot_files = []
         plotted_ranks = []
 
-        original_run_name = getattr(self._scheduler, "run_name", "")
-        if plot_prefix is not None:
-            self._scheduler.run_name = plot_prefix
-        try:
-            for rank in ranks_to_plot:
-                if rank < 1 or rank > len(self.solutions):
-                    continue
-                plotted_ranks.append(rank)
-                if save_files:
-                    self.plot_visitor_schedule(rank=rank, save_files=True, show_solution_rank=show_solution_rank)
-                    self.plot_faculty_schedule(rank=rank, save_files=True, show_solution_rank=show_solution_rank)
-
-                    name_suffix = ""
-                    if len(self._scheduler.run_name) > 0:
-                        name_suffix = "_" + self._scheduler.run_name
-                    visitor_plot_files.append(f"visitor_schedule{name_suffix}_rank{rank}.png")
-                    faculty_plot_files.append(f"faculty_schedule{name_suffix}_rank{rank}.png")
-                else:
-                    self.plot_visitor_schedule(rank=rank, save_files=False, show_solution_rank=show_solution_rank)
-                    self.plot_faculty_schedule(rank=rank, save_files=False, show_solution_rank=show_solution_rank)
-        finally:
-            self._scheduler.run_name = original_run_name
+        for rank in ranks_to_plot:
+            if rank < 1 or rank > len(self.solutions):
+                continue
+            plotted_ranks.append(rank)
+            solution = self.get(rank)
+            if plot_prefix is not None:
+                solution = replace(solution, context=replace(solution.context, run_name=plot_prefix))
+            if save_files:
+                visitor_paths = solution.plot_visitor_schedule(
+                    save_files=True, show_solution_rank=show_solution_rank
+                )
+                faculty_paths = solution.plot_faculty_schedule(
+                    save_files=True, show_solution_rank=show_solution_rank
+                )
+                if visitor_paths:
+                    visitor_plot_files.append(visitor_paths[0])
+                if faculty_paths:
+                    faculty_plot_files.append(faculty_paths[0])
+            else:
+                solution.plot_visitor_schedule(save_files=False, show_solution_rank=show_solution_rank)
+                solution.plot_faculty_schedule(save_files=False, show_solution_rank=show_solution_rank)
 
         docx_files = []
         if export_docx:
@@ -356,28 +576,22 @@ class SolutionSet:
 
     def plot_faculty_schedule(self, rank=1, show_solution_rank=True, **kwargs):
         """Plot faculty schedule for the selected ranked solution."""
-        return self._scheduler.show_faculty_schedule(
-            solution=self.get(rank), show_solution_rank=show_solution_rank, **kwargs
-        )
+        return self.get(rank).plot_faculty_schedule(show_solution_rank=show_solution_rank, **kwargs)
 
     def plot_visitor_schedule(self, rank=1, show_solution_rank=True, **kwargs):
         """Plot visitor schedule for the selected ranked solution."""
-        return self._scheduler.show_visitor_schedule(
-            solution=self.get(rank), show_solution_rank=show_solution_rank, **kwargs
-        )
+        return self.get(rank).plot_visitor_schedule(show_solution_rank=show_solution_rank, **kwargs)
 
     def export_visitor_docx(self, filename, rank=1, **kwargs):
         """Export a selected ranked solution to DOCX."""
-        return self._scheduler.export_visitor_docx(filename, solution=self.get(rank), **kwargs)
+        return self.get(rank).export_visitor_docx(filename, **kwargs)
 
     def export_visitor_docx_all(self, prefix="visitor_schedule", suffix=".docx", **kwargs):
         """Export all ranked solutions to separate DOCX files."""
         output_paths = []
         for solution in self.solutions:
             filename = Path(f"{prefix}_rank{solution.rank}{suffix}")
-            output_paths.append(
-                self._scheduler.export_visitor_docx(filename, solution=solution, **kwargs)
-            )
+            output_paths.append(solution.export_visitor_docx(filename, **kwargs))
         return output_paths
 
 
@@ -907,7 +1121,7 @@ class Scheduler:
             solutions.append(solution)
             self._add_no_good_cut(solution)
 
-        solution_set = SolutionSet(self, solutions)
+        solution_set = SolutionSet(solutions)
         self.last_solution_set = solution_set
         return solution_set
 
@@ -1166,6 +1380,35 @@ class Scheduler:
             self.last_solver_status = results.solver.status
         return results
 
+    def _build_solution_context(self):
+        """Build immutable metadata context for solution snapshots."""
+        times_by_building = {
+            b: tuple(slots) for b, slots in self.times_by_building.items()
+        }
+        faculty = {}
+        for name, info in self.faculty.items():
+            faculty[name] = {
+                "building": info.get("building", self.building_a),
+                "room": info.get("room", ""),
+                "avail": tuple(info.get("avail", [])),
+                "areas": tuple(info.get("areas", [])),
+            }
+        requests = {s: tuple(v) for s, v in self.requests.items()}
+        student_preferences = {
+            (str(s), str(f)): float(v) for (s, f), v in self.student_preferences.items()
+        }
+        return SolutionContext(
+            times_by_building=times_by_building,
+            faculty=faculty,
+            box_colors=dict(self.box_colors),
+            number_time_slots=self.number_time_slots,
+            run_name=self.run_name,
+            student_preferences=student_preferences,
+            requests=requests,
+            legacy_faculty=frozenset(getattr(self, "legacy_faculty", {}).keys()),
+            external_faculty=frozenset(self.external_faculty.keys()),
+        )
+
     def _snapshot_solution(self, rank):
         """Capture the current solved model values as an immutable snapshot."""
         m = self.model
@@ -1188,6 +1431,7 @@ class Scheduler:
             faculty=faculty,
             time_slots=time_slots,
             active_meetings=active_meetings,
+            context=self._build_solution_context(),
         )
 
     def _add_no_good_cut(self, solution):
@@ -1260,18 +1504,13 @@ class Scheduler:
         lines.append("Try reducing min_faculty/min_visitors or loosening availability.")
         return "\n".join(lines)
 
-    def _meeting_assigned(self, visitor, faculty, time_slot, solution=None):
-        """Return meeting assignment value (0/1) for model or snapshot solution."""
-        if solution is None:
-            return self.model.y[visitor, faculty, time_slot]() >= 0.5
-        return solution.meeting_assigned(str(visitor), str(faculty), int(time_slot))
-
-    def _solution_axes_sets(self, solution=None):
-        """Return iterable visitors/faculty/time set for model or snapshot solution."""
-        if solution is None:
-            m = self.model
-            return tuple(m.visitors), tuple(m.faculty), tuple(m.time)
-        return solution.visitors, solution.faculty, solution.time_slots
+    def _current_solution_result(self):
+        """Return a rich snapshot for the currently loaded feasible model."""
+        if not self.has_feasible_solution():
+            raise RuntimeError(
+                f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)})."
+            )
+        return self._snapshot_solution(rank=1)
 
     def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True, solution=None, show_solution_rank=False):
         """Plot the solved schedule grouped by faculty.
@@ -1289,56 +1528,14 @@ class Scheduler:
             If ``True`` and ``solution`` is provided, append solution rank to
             the figure title.
         """
-        if solution is None and not self.has_feasible_solution():
-            raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
-        visitors, faculty, time_slots = self._solution_axes_sets(solution=solution)
-        ax = schedule_axes(figsize=(12, 10), nslots=self.number_time_slots)
-
-        # Draw axes and ticks (background)
-        yticks = [-y for y, f in enumerate(faculty)]
-        ylabels = [
-            f"{f} {self.faculty[f]['building']} ({sum(1 for s in visitors for t in time_slots if self._meeting_assigned(s, f, t, solution=solution)):0.0f})"
-            for f in faculty
-        ]
-        ax.set_yticks(yticks, labels=ylabels)
-        for f, label in zip(faculty, ax.get_yticklabels()):
-            if self._is_legacy_faculty(f):
-                label.set_color("red")
-        for y in yticks:
-            ax.axhline(y, lw=0.4, alpha=0.3, color='b')
-            
-        # Draw schedule (foreground)
-        for y, f in enumerate(faculty):
-            for t in self.faculty[f]["avail"]:
-                bldg = self.faculty[f]["building"]
-                start, stop = slot2min(self.times_by_building[bldg][t-1])
-                ax.plot(
-                    [start, stop],
-                    [-y, -y],
-                    lw=20,
-                    color=self.box_colors.get(bldg, "#cccccc"),
-                    alpha=BOX_ALPHA,
-                    solid_capstyle="butt",
-                )
-                students = [s for s in visitors if self._meeting_assigned(s, f, t, solution=solution)]
-                if abbreviate_student_names:
-                    students = [abbreviate_name(s) for s in students]
-                students = '\n '.join(students)
-                if students:
-                    ax.text((start + stop)/2, -y, f"{students}", ha="center", va="center", fontsize=8)
-            
-        title = "Schedule by Faculty"
-        if show_solution_rank and solution is not None:
-            title += f" (Solution Rank {solution.rank})"
-        ax.set_title(title)
-        if save_files:
-            name = 'faculty_schedule'
-            if len(self.run_name) > 0:
-                name += '_' + self.run_name
-            if solution is not None:
-                name += f"_rank{solution.rank}"
-            plt.savefig(name + ".pdf")
-            plt.savefig(name + ".png")
+        from_scheduler_state = solution is None
+        chosen = solution if solution is not None else self._current_solution_result()
+        return chosen.plot_faculty_schedule(
+            save_files=save_files,
+            abbreviate_student_names=abbreviate_student_names,
+            show_solution_rank=show_solution_rank,
+            include_rank_in_filename=not from_scheduler_state,
+        )
     
     def show_visitor_schedule(self, save_files=True, abbreviate_student_names=True, solution=None, show_solution_rank=False):
         """Plot the solved schedule grouped by visitor.
@@ -1356,51 +1553,14 @@ class Scheduler:
             If ``True`` and ``solution`` is provided, append solution rank to
             the figure title.
         """
-        if solution is None and not self.has_feasible_solution():
-            raise RuntimeError(f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)}).")
-        visitors, faculty, time_slots = self._solution_axes_sets(solution=solution)
-        ax = schedule_axes(figsize=(12, 10), nslots=self.number_time_slots)
-        
-        # Draw axes and ticks (background)
-        students = [s for s in visitors]
-        if abbreviate_student_names:
-            students = [abbreviate_name(s) for s in students]
-        yticks = [-y for y, f in enumerate(students)]
-        ax.set_yticks(yticks, labels=students)
-        for y in yticks:
-            ax.axhline(y, lw=0.4, alpha=0.3, color='b')
-        
-        # Draw schedule (foreground)
-        for y, s in enumerate(visitors):
-            for t in time_slots:
-                f = [f for f in faculty if self._meeting_assigned(s, f, t, solution=solution)]
-                if f:
-                    f = f[0]
-                    bldg = self.faculty[f]["building"]
-                    start, stop = slot2min(self.times_by_building[bldg][t-1])
-                    ax.plot(
-                        [start, stop],
-                        [-y, -y],
-                        lw=20,
-                        color=self.box_colors.get(bldg, "#cccccc"),
-                        alpha=BOX_ALPHA,
-                        solid_capstyle="butt",
-                    )
-                    text_color = "red" if self._is_legacy_faculty(f) else "black"
-                    ax.text((start + stop)/2, -y, f"{f} ({bldg})", ha="center", va="center", fontsize=8, color=text_color)
-
-        title = "Schedule by Visitors"
-        if show_solution_rank and solution is not None:
-            title += f" (Solution Rank {solution.rank})"
-        ax.set_title(title)
-        if save_files:
-            name = 'visitor_schedule'
-            if len(self.run_name) > 0:
-                name += '_' + self.run_name
-            if solution is not None:
-                name += f"_rank{solution.rank}"
-            plt.savefig(name + ".pdf")
-            plt.savefig(name + ".png")
+        from_scheduler_state = solution is None
+        chosen = solution if solution is not None else self._current_solution_result()
+        return chosen.plot_visitor_schedule(
+            save_files=save_files,
+            abbreviate_student_names=abbreviate_student_names,
+            show_solution_rank=show_solution_rank,
+            include_rank_in_filename=not from_scheduler_state,
+        )
 
     def export_visitor_docx(self, filename, solution=None, **kwargs):
         """Export solved visitor schedules to a DOCX file.
@@ -1413,9 +1573,8 @@ class Scheduler:
             Additional keyword arguments forwarded to
             :func:`grad_visit_scheduler.export.export_visitor_docx`.
         """
-        from .export import export_visitor_docx
-
-        return export_visitor_docx(self, filename, solution=solution, **kwargs)
+        chosen = solution if solution is not None else self._current_solution_result()
+        return chosen.export_visitor_docx(filename, **kwargs)
         
     def show_utility(self):
         """Plot realized meetings and display total utility for a solved model."""
