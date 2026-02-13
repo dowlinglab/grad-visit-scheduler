@@ -52,6 +52,27 @@ targeting `main`. Coverage is uploaded to Codecov from the Python 3.11 job.
 For this public repository, coverage upload uses GitHub OIDC (no
 `CODECOV_TOKEN` secret required).
 
+## Automated PyPI Releases
+
+Releases are tag-driven via GitHub Actions:
+
+- Push a semantic version tag like `v0.2.0`.
+- Workflow `.github/workflows/release.yml` runs tests, builds `sdist`/wheel, and checks package metadata.
+- Package is published to **TestPyPI** first.
+- CI performs a smoke install of that exact tagged version from TestPyPI.
+- If smoke install passes, CI publishes the same artifact to **PyPI**.
+
+Publishing uses PyPI Trusted Publishing (OIDC), so no API token secret is required.
+Configure both PyPI and TestPyPI trusted publishers to point to this repository
+and the `release.yml` workflow file.
+Detailed release instructions are in [`docs/releasing.md`](docs/releasing.md).
+
+Manual release workflow runs are also supported (`workflow_dispatch`):
+
+- `target=testpypi`: build, publish to TestPyPI, smoke install, stop.
+- `target=pypi`: run the full pipeline (TestPyPI + smoke + PyPI publish).
+- Optional `version` input lets smoke install pin a specific version.
+
 ## Quickstart
 
 ```python
