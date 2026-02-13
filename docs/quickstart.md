@@ -66,6 +66,9 @@ else:
     print(s.infeasibility_report())
 ```
 
+The Top-N workflow in section 5 uses the preferred modern `SolutionSet` /
+`SolutionResult` interface for ranked schedules.
+
 ## 3) Key solver options
 
 Common options on `schedule_visitors(...)`:
@@ -118,6 +121,8 @@ python scripts/run_formulation_example.py
 
 Use `schedule_visitors_top_n(...)` to generate multiple ranked schedules.
 Each additional solution is forced to differ by at least one assignment.
+For the exact no-good-cut equation used in the model, see
+[Mathematical Formulation: Top-N No-Good Cuts](formulation.md#top-n-no-good-cuts).
 
 ```python
 top = s.schedule_visitors_top_n(
