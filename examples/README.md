@@ -34,7 +34,9 @@ if s.has_feasible_solution():
 Notes:
 - `movement.policy: none` disables explicit travel-time constraints.
 - `movement.policy: travel_time` enables pairwise lag constraints via `movement.travel_slots`.
+- `movement.policy: nonoverlap_time` auto-derives lag constraints from absolute slot timestamps.
 - Use `movement.phase_slot` to configure staggered starts (for example, Building A first).
+- Use `movement.travel_slots: auto` under `travel_time` for equivalent auto-derived lags.
 
 Movement/staggered example configs:
 
@@ -43,6 +45,7 @@ Movement/staggered example configs:
 - `config_three_buildings_close.yaml`: three close buildings, no travel-time constraints.
 - `config_shifted_a_first.yaml`: staggered starts with Building A first.
 - `config_shifted_b_first.yaml`: staggered starts with Building B first.
+- `config_shifted_nonoverlap_auto.yaml`: shifted clocks with automatic non-overlap travel lags.
 
 Companion faculty catalogs for generalized building demos:
 

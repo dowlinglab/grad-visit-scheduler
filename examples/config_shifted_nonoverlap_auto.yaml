@@ -1,0 +1,22 @@
+buildings:
+  BuildingA: ["1:00-1:25", "1:30-1:55", "2:00-2:25", "2:30-2:55"]
+  BuildingB: ["1:15-1:40", "1:45-2:10", "2:15-2:40", "2:45-3:10"]
+building_order: ["BuildingA", "BuildingB"]
+movement:
+  policy: nonoverlap_time
+  phase_slot:
+    BuildingA: 1
+    BuildingB: 1
+  min_buffer_minutes: 0
+breaks: [2]
+
+areas: ["Area1", "Area2"]
+area_weights:
+  Area1: 1.0
+  Area2: 0.5
+
+faculty_availability:
+  Faculty A: [1, 2, 3, 4]
+  Faculty B: [1, 2, 3, 4]
+  Faculty C: [1, 2, 3, 4]
+  Faculty D: []
