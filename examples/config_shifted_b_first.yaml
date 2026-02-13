@@ -5,8 +5,8 @@ building_order: ["ABC", "XYZ"]
 movement:
   policy: none
   phase_slot:
-    ABC: 1
-    XYZ: 2
+    ABC: 2
+    XYZ: 1
 breaks: [2, 3]
 
 areas: ["Energy", "Bio", "Theory"]

@@ -74,19 +74,58 @@ def load_run_config(path: str | Path) -> Dict[str, Any]:
     Raises
     ------
     ValueError
-        If required sections are missing or building ordering is invalid.
+        If required sections are missing, building ordering is invalid,
+        or movement configuration is invalid.
     """
     data = load_yaml(path)
     if "buildings" not in data or not data.get("buildings"):
         raise ValueError("Run config missing 'buildings' section.")
+    buildings = data.get("buildings", {})
+    slot_lengths = {name: len(slots) for name, slots in buildings.items()}
+    if any(length == 0 for length in slot_lengths.values()):
+        raise ValueError("Run config buildings must define at least one time slot per building.")
+    if len(set(slot_lengths.values())) > 1:
+        raise ValueError("Run config buildings must all have the same number of time slots.")
+
     building_order = data.get("building_order")
     if building_order is not None:
-        if not isinstance(building_order, list) or len(building_order) != 2:
-            raise ValueError("Run config 'building_order' must be a list of exactly two building names.")
-        buildings = data.get("buildings", {})
+        if not isinstance(building_order, list) or len(building_order) < 1:
+            raise ValueError("Run config 'building_order' must be a non-empty list of building names.")
         missing = [b for b in building_order if b not in buildings]
         if missing:
             raise ValueError(f"Run config 'building_order' entries not found in buildings: {missing}")
+    movement = data.get("movement", {})
+    if movement:
+        if not isinstance(movement, dict):
+            raise ValueError("Run config 'movement' must be a dictionary.")
+        policy = str(movement.get("policy", "none")).lower()
+        if policy not in {"none", "travel_time", "nonoverlap_time"}:
+            raise ValueError(
+                "Run config movement.policy must be 'none', 'travel_time', or 'nonoverlap_time'."
+            )
+        phase_slot = movement.get("phase_slot", {})
+        if phase_slot and not isinstance(phase_slot, dict):
+            raise ValueError("Run config movement.phase_slot must be a dictionary.")
+        for b, v in phase_slot.items():
+            if b not in data["buildings"]:
+                raise ValueError(f"Run config movement.phase_slot contains unknown building '{b}'.")
+            v_int = int(v)
+            max_slot = next(iter(slot_lengths.values()))
+            if v_int < 1 or v_int > max_slot:
+                raise ValueError(f"Run config movement.phase_slot values must be in [1, {max_slot}].")
+        if "min_buffer_minutes" in movement:
+            buffer_minutes = int(movement["min_buffer_minutes"])
+            if buffer_minutes < 0:
+                raise ValueError("Run config movement.min_buffer_minutes must be nonnegative.")
+        if policy in {"travel_time", "nonoverlap_time"}:
+            travel = movement.get("travel_slots")
+            auto_requested = isinstance(travel, str) and travel.lower() == "auto"
+            if travel is not None and not (isinstance(travel, dict) or auto_requested):
+                raise ValueError("Run config movement.travel_slots must be a dictionary or 'auto'.")
+            if policy == "nonoverlap_time" and travel is not None and not auto_requested:
+                raise ValueError(
+                    "Run config movement.policy='nonoverlap_time' only supports travel_slots omitted or 'auto'."
+                )
     return data
 
 
@@ -121,7 +160,7 @@ def scheduler_from_configs(
     faculty_catalog_path: str | Path,
     run_config_path: str | Path,
     student_data_filename: str | Path,
-    mode: Mode = Mode.NO_OFFSET,
+    mode: Mode | None = None,
     solver: Solver = Solver.HIGHS,
     include_legacy_faculty: bool = False,
 ) -> Scheduler:
@@ -136,7 +175,8 @@ def scheduler_from_configs(
     student_data_filename:
         Path to visitor preference CSV data.
     mode:
-        Building sequencing mode.
+        Legacy building sequencing mode. Prefer movement configuration in the
+        run config.
     solver:
         Solver backend to use.
     include_legacy_faculty:
@@ -165,6 +205,7 @@ def scheduler_from_configs(
         times_by_building=times_by_building,
         student_data_filename=str(student_data_filename),
         mode=mode,
+        movement=run_cfg.get("movement"),
         solver=solver,
         include_legacy_faculty=include_legacy_faculty,
         faculty_catalog=faculty_catalog,

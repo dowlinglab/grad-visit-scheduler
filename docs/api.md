@@ -10,15 +10,37 @@ Top-level imports provided by `grad_visit_scheduler`:
 
 - `Scheduler`
 - `Mode`
+- `MovementPolicy`
 - `Solver`
 - `FacultyStatus`
 - `SolutionResult`
 - `SolutionSet`
+- `compute_min_travel_lags`
 - `scheduler_from_configs`
 - `load_faculty_catalog`
 - `load_run_config`
 - `build_times_by_building`
 - `export_visitor_docx`
+
+Preferred interface note: use run-config `movement:` settings and
+`MovementPolicy`; `Mode` remains as a legacy compatibility enum.
+
+## Preferred Single-Solution Workflow
+
+For single-solution solves, use `schedule_visitors(...)` directly:
+
+```python
+sol = s.schedule_visitors(...)
+if sol is not None:
+    sol.plot_faculty_schedule(save_files=True)
+    sol.plot_visitor_schedule(save_files=True)
+    sol.export_visitor_docx("visitor_schedule.docx")
+else:
+    print(s.infeasibility_report())
+```
+
+You can also access the loaded solved snapshot with `Scheduler.current_solution()`.
+This raises `RuntimeError` if no feasible solution is loaded.
 
 ## Top-N Review Helper
 
@@ -31,7 +53,7 @@ Top-level imports provided by `grad_visit_scheduler`:
 
 For the mathematical no-good-cut constraint that enforces uniqueness between
 ranked solutions, see
-[Mathematical Formulation: Top-N No-Good Cuts](formulation.md#top-n-no-good-cuts).
+[Mathematical Formulation](formulation.md) ("Top-N No-Good Cuts" section).
 
 Internal review pattern (keep rank labels visible in plot titles):
 
@@ -71,7 +93,7 @@ iteration. In this case:
 - `Scheduler.last_solution_set` points to that `SolutionSet`.
 - `Scheduler.results` / `has_feasible_solution()` remain aligned with the last
   feasible loaded model state.
-- `Scheduler._current_solution_result()` therefore returns the last feasible
+- `Scheduler.current_solution()` therefore returns the last feasible
   schedule (with rank `1` as a current-state snapshot rank).
 
 This behavior is intentional so legacy scheduler-level plotting/export methods
@@ -82,7 +104,6 @@ continue to operate after top-N exhaustion.
 ```{eval-rst}
 .. automodule:: grad_visit_scheduler.core
    :members:
-   :private-members:
    :special-members: __init__
 ```
 

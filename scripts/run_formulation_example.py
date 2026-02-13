@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from grad_visit_scheduler import scheduler_from_configs, Mode, Solver  # noqa: E402
+from grad_visit_scheduler import scheduler_from_configs, Solver  # noqa: E402
 
 examples = ROOT / "examples"
 
@@ -19,11 +19,10 @@ s = scheduler_from_configs(
     examples / "faculty_formulation.yaml",
     examples / "config_formulation.yaml",
     examples / "data_formulation_visitors.csv",
-    mode=Mode.NO_OFFSET,
     solver=Solver.HIGHS,
 )
 
-s.schedule_visitors(
+sol = s.schedule_visitors(
     group_penalty=0.2,
     min_visitors=2,
     max_visitors=8,
@@ -34,9 +33,9 @@ s.schedule_visitors(
     run_name="formulation_demo",
 )
 
-if s.has_feasible_solution():
-    s.show_faculty_schedule(save_files=True)
-    s.show_visitor_schedule(save_files=True)
+if sol is not None:
+    sol.plot_faculty_schedule(save_files=True, show_solution_rank=False)
+    sol.plot_visitor_schedule(save_files=True, show_solution_rank=False)
     print("Feasible solution found.")
 else:
     print(s.infeasibility_report())

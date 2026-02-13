@@ -1,12 +1,14 @@
 buildings:
   ABC: ["1:00-1:25", "1:30-1:55", "2:00-2:25", "2:30-2:55"]
-  XYZ: ["1:30-1:55", "2:00-2:25", "2:30-2:55", "3:00-3:25"]
-building_order: ["ABC", "XYZ"]
+  XYZ: ["1:00-1:25", "1:30-1:55", "2:00-2:25", "2:30-2:55"]
+  LMN: ["1:00-1:25", "1:30-1:55", "2:00-2:25", "2:30-2:55"]
+building_order: ["ABC", "XYZ", "LMN"]
 movement:
   policy: none
   phase_slot:
     ABC: 1
-    XYZ: 2
+    XYZ: 1
+    LMN: 1
 breaks: [2, 3]
 
 areas: ["Energy", "Bio", "Theory"]

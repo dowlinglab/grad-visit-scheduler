@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -134,7 +135,48 @@ def test_current_solution_result_raises_before_solve(tmp_path: Path):
     """Accessing current solution snapshot before solve should raise."""
     s = _build_tiny_scheduler(tmp_path)
     with pytest.raises(RuntimeError, match="No feasible solution"):
-        s._current_solution_result()
+        s.current_solution()
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_schedule_visitors_returns_solution_result():
+    """Single-solve API should return a SolutionResult for feasible solves."""
+    s = _build_solved_scheduler()
+    sol = s.schedule_visitors(
+        group_penalty=0.2,
+        min_visitors=2,
+        max_visitors=8,
+        min_faculty=1,
+        max_group=2,
+        enforce_breaks=True,
+        tee=False,
+        run_name="single_return",
+    )
+    assert sol is not None
+    assert sol.rank == 1
+    assert sol.objective_value == pytest.approx(float(pyo.value(s.model.obj)))
+    assert s.current_solution().active_meetings == sol.active_meetings
+    assert s.last_solution_set is None
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_schedule_visitors_returns_none_when_infeasible(tmp_path: Path):
+    """Single-solve API should return None when model is infeasible."""
+    s = _build_tiny_scheduler(tmp_path)
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=2,
+        max_visitors=2,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="single_infeasible",
+    )
+    assert sol is None
+    assert not s.has_feasible_solution()
+    with pytest.raises(RuntimeError, match="No feasible solution"):
+        s.current_solution()
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
@@ -196,6 +238,40 @@ def test_solution_result_single_solution_api(tmp_path: Path):
     document = Document(str(docx_file))
     assert len(document.tables) == len(sol.visitors)
     assert len(document.tables[0].rows) == len(sol.time_slots)
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_modern_single_solution_workflow_has_no_legacy_futurewarnings(tmp_path: Path):
+    """Modern single-solve workflow should avoid legacy wrapper warnings."""
+    pytest.importorskip("docx")
+    s = _build_solved_scheduler()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sol = s.schedule_visitors(
+            group_penalty=0.2,
+            min_visitors=2,
+            max_visitors=8,
+            min_faculty=1,
+            max_group=2,
+            enforce_breaks=True,
+            tee=False,
+            run_name="modern_single",
+        )
+        assert sol is not None
+        cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            sol.plot_visitor_schedule(save_files=False, show_solution_rank=False)
+            sol.plot_faculty_schedule(save_files=False, show_solution_rank=False)
+            sol.export_visitor_docx("modern_single.docx")
+        finally:
+            os.chdir(cwd)
+    legacy_msgs = [
+        str(w.message)
+        for w in caught
+        if issubclass(w.category, FutureWarning) and "legacy" in str(w.message).lower()
+    ]
+    assert legacy_msgs == []
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")

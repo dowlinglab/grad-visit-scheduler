@@ -124,15 +124,15 @@ def test_missing_buildings_in_run_config_raises(tmp_path: Path):
 
 
 def test_invalid_building_order_shape_raises(tmp_path: Path):
-    """Raise when building_order is not a list of exactly two names."""
+    """Raise when building_order is empty."""
     run_yaml = tmp_path / "run.yaml"
     run_yaml.write_text(
         "buildings:\n"
         "  BuildingA: ['1:00-1:25']\n"
         "  BuildingB: ['1:00-1:25']\n"
-        "building_order: ['BuildingA']\n"
+        "building_order: []\n"
     )
-    with pytest.raises(ValueError, match="exactly two"):
+    with pytest.raises(ValueError, match="non-empty"):
         load_run_config(run_yaml)
 
 
@@ -146,6 +146,87 @@ def test_invalid_building_order_missing_entries_raises(tmp_path: Path):
         "building_order: ['BuildingA', 'BuildingC']\n"
     )
     with pytest.raises(ValueError, match="entries not found"):
+        load_run_config(run_yaml)
+
+
+def test_invalid_movement_policy_raises(tmp_path: Path):
+    """Raise when movement.policy is unsupported."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "movement:\n"
+        "  policy: teleport\n"
+    )
+    with pytest.raises(ValueError, match="movement.policy"):
+        load_run_config(run_yaml)
+
+
+def test_nonoverlap_time_with_explicit_travel_slots_raises(tmp_path: Path):
+    """nonoverlap_time policy should not accept manual travel slot matrices."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:15-1:40']\n"
+        "movement:\n"
+        "  policy: nonoverlap_time\n"
+        "  travel_slots:\n"
+        "    BuildingA:\n"
+        "      BuildingA: 0\n"
+        "      BuildingB: 1\n"
+        "    BuildingB:\n"
+        "      BuildingA: 1\n"
+        "      BuildingB: 0\n"
+    )
+    with pytest.raises(ValueError, match="nonoverlap_time"):
+        load_run_config(run_yaml)
+
+
+def test_travel_time_allows_auto_travel_slots(tmp_path: Path):
+    """travel_time policy should accept travel_slots: auto."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25', '1:30-1:55']\n"
+        "  BuildingB: ['1:15-1:40', '1:45-2:10']\n"
+        "movement:\n"
+        "  policy: travel_time\n"
+        "  travel_slots: auto\n"
+        "  min_buffer_minutes: 5\n"
+    )
+    cfg = load_run_config(run_yaml)
+    assert cfg["movement"]["travel_slots"] == "auto"
+
+
+def test_negative_min_buffer_minutes_raises(tmp_path: Path):
+    """movement.min_buffer_minutes must be nonnegative."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:15-1:40']\n"
+        "movement:\n"
+        "  policy: travel_time\n"
+        "  travel_slots: auto\n"
+        "  min_buffer_minutes: -1\n"
+    )
+    with pytest.raises(ValueError, match="min_buffer_minutes"):
+        load_run_config(run_yaml)
+
+
+def test_invalid_phase_slot_out_of_range_raises(tmp_path: Path):
+    """Raise when phase slot is outside configured slot range."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25', '1:30-1:55']\n"
+        "movement:\n"
+        "  policy: none\n"
+        "  phase_slot:\n"
+        "    BuildingA: 3\n"
+    )
+    with pytest.raises(ValueError, match="movement.phase_slot"):
         load_run_config(run_yaml)
 
 
@@ -265,3 +346,125 @@ def test_no_offset_without_breaks_raises(tmp_path: Path):
             tee=False,
             run_name="no_breaks",
         )
+
+
+def test_legacy_mode_no_offset_emits_futurewarning(tmp_path: Path):
+    """Explicit use of legacy mode should emit FutureWarning."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    with pytest.warns(FutureWarning, match="legacy interface"):
+        Scheduler(
+            times_by_building=times_by_building,
+            student_data_filename=str(csv_path),
+            mode=Mode.NO_OFFSET,
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+
+def test_mode_and_movement_together_emits_futurewarning(tmp_path: Path):
+    """Providing both legacy mode and movement should warn and use movement."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    with pytest.warns(FutureWarning, match="Ignoring `mode` and using `movement`"):
+        s = Scheduler(
+            times_by_building=times_by_building,
+            student_data_filename=str(csv_path),
+            mode=Mode.BUILDING_A_FIRST,
+            movement={"policy": "none", "phase_slot": {"BuildingA": 1, "BuildingB": 1}},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+    assert s.movement_policy == "none"
+
+
+def test_no_offset_break_default_differs_from_movement_equivalent(tmp_path: Path):
+    """Legacy NO_OFFSET implies breaks by default; movement-only does not."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+
+    with pytest.warns(FutureWarning, match="legacy interface"):
+        s_mode = Scheduler(
+            times_by_building=times_by_building,
+            student_data_filename=str(csv_path),
+            mode=Mode.NO_OFFSET,
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+    with pytest.raises(ValueError, match="Must specify some break times"):
+        s_mode._build_model(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=1,
+            min_faculty=1,
+            max_group=1,
+            enforce_breaks=False,
+        )
+
+    s_move = Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        movement={
+            "policy": "travel_time",
+            "phase_slot": {"BuildingA": 1, "BuildingB": 1},
+            "travel_slots": {
+                "BuildingA": {"BuildingA": 0, "BuildingB": 1},
+                "BuildingB": {"BuildingA": 1, "BuildingB": 0},
+            },
+        },
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+    s_move._build_model(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+    )

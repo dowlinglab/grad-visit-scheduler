@@ -22,3 +22,4 @@ venv/
 .vscode/
 .python-version
 .ipynb_checkpoints/
+.jupyter_tmp/
