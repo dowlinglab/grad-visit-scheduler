@@ -7,13 +7,12 @@ Examples live here. Suggested workflow:
 Minimal example:
 
 ```python
-from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
+from grad_visit_scheduler import scheduler_from_configs, Solver
 
 s = scheduler_from_configs(
     "examples/faculty_example.yaml",
-    "examples/config_basic.yaml",
+    "examples/config_two_buildings_close.yaml",
     "examples/data_fake_visitors.csv",
-    mode=Mode.NO_OFFSET,
     solver=Solver.HIGHS,
 )
 
@@ -33,8 +32,22 @@ if s.has_feasible_solution():
 ```
 
 Notes:
-- `building_order` declares which building is Building A vs Building B.
-- Use `Mode.BUILDING_A_FIRST`, `Mode.BUILDING_B_FIRST`, or `Mode.NO_OFFSET` to control movement.
+- `movement.policy: none` disables explicit travel-time constraints.
+- `movement.policy: travel_time` enables pairwise lag constraints via `movement.travel_slots`.
+- Use `movement.phase_slot` to configure staggered starts (for example, Building A first).
+
+Movement/staggered example configs:
+
+- `config_one_building.yaml`: one-building schedule.
+- `config_two_buildings_close.yaml`: two close buildings, no travel-time constraints.
+- `config_three_buildings_close.yaml`: three close buildings, no travel-time constraints.
+- `config_shifted_a_first.yaml`: staggered starts with Building A first.
+- `config_shifted_b_first.yaml`: staggered starts with Building B first.
+
+Movement/staggered example scripts:
+
+- `../scripts/run_example.py`: two-building close-proximity solve.
+- `../scripts/run_shifted_start_comparison.py`: A-first vs B-first performance comparison and plots.
 
 Formulation-focused example:
 - `faculty_formulation.yaml`: six-faculty catalog (`Prof. A` to `Prof. F`) used in docs.

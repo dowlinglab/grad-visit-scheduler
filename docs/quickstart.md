@@ -8,7 +8,7 @@ This quickstart uses the larger formulation example:
 - `examples/config_formulation.yaml` (4 meeting slots across buildings `ABC` and `XYZ`)
 - `examples/data_formulation_visitors.csv` (10 visitors)
 
-For a detailed explanation of this same example (model equations, conflicts, preferences, and solver output tables), see [Mathematical Formulation](formulation.md).
+For a detailed explanation of this same example (model equations, conflicts, preferences, and solver output tables), see [Mathematical Formulation](formulation.md). For movement policy and staggered starts, see [Building Movement and Staggered Starts](movement.md).
 
 ## 1) Understand the input files
 
@@ -37,7 +37,7 @@ The scheduler expects three inputs.
 
 ```python
 from pathlib import Path
-from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
+from grad_visit_scheduler import scheduler_from_configs, Solver
 
 root = Path("examples")
 
@@ -45,7 +45,6 @@ s = scheduler_from_configs(
     root / "faculty_formulation.yaml",
     root / "config_formulation.yaml",
     root / "data_formulation_visitors.csv",
-    mode=Mode.NO_OFFSET,
     solver=Solver.HIGHS,
 )
 
@@ -158,3 +157,20 @@ Repository script for this workflow:
 ```bash
 python scripts/run_top_n_example.py
 ```
+
+## 6) Staggered Building Starts (A First vs B First)
+
+Use `movement.phase_slot` in run configs to compare staggered starts.
+Repository examples:
+
+- `examples/config_shifted_a_first.yaml`
+- `examples/config_shifted_b_first.yaml`
+
+Comparison runner:
+
+```bash
+python scripts/run_shifted_start_comparison.py
+```
+
+For full movement-policy details (one/two/three-building cases and travel-time
+constraints), see [Building Movement and Staggered Starts](movement.md).

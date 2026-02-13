@@ -39,6 +39,13 @@ class Mode(Enum):
     BUILDING_B_FIRST = 2
     NO_OFFSET = 3
 
+
+class MovementPolicy(Enum):
+    """Building movement policy for multi-building schedules."""
+
+    NONE = "none"
+    TRAVEL_TIME = "travel_time"
+
 def schedule_axes(figsize,nslots=7):
     """Create a matplotlib axis formatted for visit-day schedule plots.
 
@@ -603,7 +610,8 @@ class Scheduler:
         self,
         times_by_building,
         student_data_filename,
-        mode=Mode.NO_OFFSET,
+        mode=None,
+        movement=None,
         solver=Solver.HIGHS,
         include_legacy_faculty=False,
         faculty_catalog=None,
@@ -619,7 +627,12 @@ class Scheduler:
         student_data_filename:
             CSV file with visitor names and ranked preferences.
         mode:
-            Building sequencing mode.
+            Legacy building sequencing mode. Prefer ``movement``.
+        movement:
+            Optional movement configuration dictionary with keys:
+            ``policy`` (``"none"`` or ``"travel_time"``),
+            ``phase_slot`` (per-building earliest slot), and optional
+            ``travel_slots`` (pairwise slot lags for travel-time policies).
         solver:
             Solver backend used by :meth:`schedule_visitors`.
         include_legacy_faculty:
@@ -640,6 +653,7 @@ class Scheduler:
 
         # Process time data
         self._set_time_data(times_by_building)
+        self._configure_movement(mode=mode, movement=movement)
         self.box_colors = self._build_box_colors()
 
         self.external_faculty = {}
@@ -657,7 +671,7 @@ class Scheduler:
         # Create weights using defaults
         self.update_weights()
 
-        # Save default solver and mode
+        # Save default solver and legacy mode marker
         self.mode = mode
         self.solver = solver
 
@@ -680,10 +694,10 @@ class Scheduler:
                 self.break_times = v
 
         self.buildings = list(times_by_building_copy.keys())
-        if len(self.buildings) != 2:
-            raise ValueError("Run config must define exactly two buildings.")
+        if len(self.buildings) < 1:
+            raise ValueError("Run config must define at least one building.")
         self.building_a = self.buildings[0]
-        self.building_b = self.buildings[1]
+        self.building_b = self.buildings[1] if len(self.buildings) > 1 else self.buildings[0]
         self.number_time_slots = len(times_by_building_copy[self.buildings[0]])
         self.time_slots = [i for i in range(1, self.number_time_slots+1) ]
 
@@ -693,10 +707,95 @@ class Scheduler:
                     raise ValueError(t,"is not a valid break time")
 
         for i, k in enumerate(times_by_building_copy):
-            if len(times_by_building_copy[k]) is not self.number_time_slots:
+            if len(times_by_building_copy[k]) != self.number_time_slots:
                 raise ValueError("Each building should have the same number of timeslots")
 
         self.times_by_building = times_by_building_copy
+
+    def _configure_movement(self, mode, movement):
+        """Normalize movement configuration with legacy mode compatibility."""
+        if movement is None:
+            movement = {}
+
+        if mode is not None and movement:
+            warnings.warn(
+                "Both legacy `mode` and `movement` were provided. "
+                "Ignoring `mode` and using `movement`.",
+                FutureWarning,
+                stacklevel=2,
+            )
+
+        self.require_break_constraints_default = False
+        use_legacy_mode = bool(mode is not None and not movement)
+        if use_legacy_mode and mode is not Mode.NO_OFFSET:
+            warnings.warn(
+                "Scheduler(mode=...) is a legacy interface. Prefer movement "
+                "configuration via run config or Scheduler(..., movement=...).",
+                FutureWarning,
+                stacklevel=2,
+            )
+
+        if use_legacy_mode:
+            if len(self.buildings) != 2 and mode in {Mode.BUILDING_A_FIRST, Mode.BUILDING_B_FIRST}:
+                raise ValueError("Legacy BUILDING_A_FIRST/BUILDING_B_FIRST modes require exactly two buildings.")
+            if mode is Mode.BUILDING_A_FIRST:
+                second_slot = min(2, self.number_time_slots)
+                movement = {
+                    "policy": MovementPolicy.NONE.value,
+                    "phase_slot": {self.building_a: 1, self.building_b: second_slot},
+                }
+            elif mode is Mode.BUILDING_B_FIRST:
+                second_slot = min(2, self.number_time_slots)
+                movement = {
+                    "policy": MovementPolicy.NONE.value,
+                    "phase_slot": {self.building_a: second_slot, self.building_b: 1},
+                }
+            else:
+                travel = {b: {bb: (0 if b == bb else 1) for bb in self.buildings} for b in self.buildings}
+                movement = {
+                    "policy": MovementPolicy.TRAVEL_TIME.value,
+                    "phase_slot": {b: 1 for b in self.buildings},
+                    "travel_slots": travel,
+                }
+                # Preserve historical behavior where NO_OFFSET implied explicit breaks.
+                self.require_break_constraints_default = True
+
+        policy = str(movement.get("policy", MovementPolicy.NONE.value)).lower()
+        if policy not in {MovementPolicy.NONE.value, MovementPolicy.TRAVEL_TIME.value}:
+            raise ValueError(f"Unsupported movement policy '{policy}'.")
+        self.movement_policy = policy
+
+        phase_slot = dict(movement.get("phase_slot", {}))
+        self.building_phase_slot = {}
+        for b in self.buildings:
+            val = int(phase_slot.get(b, 1))
+            if val < 1 or val > self.number_time_slots:
+                raise ValueError(
+                    f"movement.phase_slot[{b}]={val} is outside valid slot range 1..{self.number_time_slots}."
+                )
+            self.building_phase_slot[b] = val
+
+        travel_slots = movement.get("travel_slots")
+        if self.movement_policy == MovementPolicy.TRAVEL_TIME.value:
+            if travel_slots is None:
+                travel_slots = {b: {bb: (0 if b == bb else 1) for bb in self.buildings} for b in self.buildings}
+            self.travel_slots = {}
+            for b_from in self.buildings:
+                row = travel_slots.get(b_from)
+                if row is None:
+                    raise ValueError(f"movement.travel_slots is missing row for '{b_from}'.")
+                self.travel_slots[b_from] = {}
+                for b_to in self.buildings:
+                    if b_to not in row:
+                        raise ValueError(
+                            f"movement.travel_slots['{b_from}'] is missing destination '{b_to}'."
+                        )
+                    lag = int(row[b_to])
+                    if lag < 0:
+                        raise ValueError("movement.travel_slots values must be nonnegative integers.")
+                    self.travel_slots[b_from][b_to] = lag
+        else:
+            self.travel_slots = {b: {bb: 0 for bb in self.buildings} for b in self.buildings}
 
     def _build_box_colors(self):
         """Return a color map for configured buildings."""
@@ -1049,8 +1148,8 @@ class Scheduler:
         max_group:
             Maximum number of visitors allowed in a single faculty-time meeting.
         enforce_breaks:
-            If ``True``, enforce explicit break constraints even outside
-            ``Mode.NO_OFFSET``.
+            If ``True``, enforce explicit break constraints regardless of
+            movement policy.
         tee:
             If ``True``, stream solver output.
         run_name:
@@ -1157,11 +1256,10 @@ class Scheduler:
         m.visitors = pyo.Set(initialize = self.student_data.index)
         m.faculty = pyo.Set(initialize = m.faculty_available)
         m.time = pyo.RangeSet(1, self.number_time_slots)
-        m.building_a = pyo.Set(
-            initialize=[f for f in m.faculty_available if self.faculty[f]["building"] == self.building_a]
-        )
-        m.building_b = pyo.Set(
-            initialize=[f for f in m.faculty_available if self.faculty[f]["building"] == self.building_b]
+        m.buildings = pyo.Set(initialize=self.buildings)
+        m.faculty_by_building = pyo.Set(
+            m.buildings,
+            initialize=lambda m, b: [f for f in m.faculty if self.faculty[f]["building"] == b],
         )
         
         # PARAMETERS
@@ -1185,12 +1283,11 @@ class Scheduler:
         # facutly_too_many_meetings == 1  <=>  faculty f meets more than max_visitors - 2 students
         m.faculty_too_many_meetings = pyo.Var(m.faculty, domain=pyo.Binary)
 
-        # bldg_a[s, t] == 1  <=>  visitor s in building A at time t
-        # same idea for building B
-        m.bldg_a = pyo.Var(m.visitors, m.time, domain=pyo.Binary)
-        m.bldg_b = pyo.Var(m.visitors, m.time, domain=pyo.Binary)
-        
-        if self.mode is Mode.NO_OFFSET or enforce_breaks:
+        if self.movement_policy == MovementPolicy.TRAVEL_TIME.value:
+            # in_building[s, b, t] == 1  <=>  visitor s is in building b at time t
+            m.in_building = pyo.Var(m.visitors, m.buildings, m.time, domain=pyo.Binary)
+
+        if self.require_break_constraints_default or enforce_breaks:
 
             if len(self.break_times) == 0:
                 raise ValueError("Must specify some break times!")
@@ -1259,54 +1356,40 @@ class Scheduler:
         def max_group_size(m, f, t):
             return sum(m.y[s, f, t] for s in m.visitors) <= max_group
 
-        # Determine if visitor is in building A
-        @m.Constraint(m.visitors, m.time)
-        def building_a_visits(m, s, t):
-            return sum(m.y[s, f, t] for f in m.building_a) <= m.bldg_a[s, t]
-        
-        # Determine if visitor is in building B
-        @m.Constraint(m.visitors, m.time)
-        def building_b_visits(m, s, t):
-            return sum(m.y[s, f, t] for f in m.building_b) <= m.bldg_b[s, t] 
+        # Building phase offset: meetings cannot start before per-building phase slot.
+        @m.Constraint(m.visitors, m.faculty, m.time)
+        def building_phase(m, s, f, t):
+            phase = self.building_phase_slot[self.faculty[f]["building"]]
+            return m.y[s, f, t] <= (1 if t >= phase else 0)
 
-        # Move from building A to building B
+        if self.movement_policy == MovementPolicy.TRAVEL_TIME.value:
+            @m.Constraint(m.visitors, m.buildings, m.time)
+            def in_building_link(m, s, b, t):
+                return sum(m.y[s, f, t] for f in m.faculty_by_building[b]) <= m.in_building[s, b, t]
 
-        if self.mode is Mode.BUILDING_A_FIRST:
-            @m.Constraint(m.visitors, m.time)
-            def building_a_starts_first(m, s, t):
-                if t == 1:
-                    return pyo.Constraint.Skip
-                return m.bldg_b[s, t - 1] + m.bldg_a[s, t] <= 1
+            m.travel_time_constraints = pyo.ConstraintList()
+            for s in m.visitors:
+                for b_from in self.buildings:
+                    for b_to in self.buildings:
+                        if b_from == b_to:
+                            continue
+                        lag = int(self.travel_slots[b_from][b_to])
+                        if lag <= 0:
+                            continue
+                        for t_from in self.time_slots:
+                            t_to_max = min(self.number_time_slots, t_from + lag)
+                            for t_to in range(t_from + 1, t_to_max + 1):
+                                m.travel_time_constraints.add(
+                                    m.in_building[s, b_from, t_from] + m.in_building[s, b_to, t_to] <= 1
+                                )
 
-        if self.mode is Mode.BUILDING_B_FIRST:
-            @m.Constraint(m.visitors, m.time)
-            def building_b_starts_first(m, s, t):
-                if t == 1:
-                    return pyo.Constraint.Skip
-                return m.bldg_a[s, t - 1] + m.bldg_b[s, t] <= 1
-            
-        if self.mode is Mode.NO_OFFSET:
-            # Require empty timeslot to move from building A to building B
-            @m.Constraint(m.visitors, m.time)
-            def building_a_to_b_move(m, s, t):
-                if t == 1:
-                    return pyo.Constraint.Skip
-                return m.bldg_a[s, t - 1] + m.bldg_b[s, t] <= 1
-            
-            # Require empty timeslot to move from building B to building A
-            @m.Constraint(m.visitors, m.time)
-            def building_b_to_a_move(m, s, t):
-                if t == 1:
-                    return pyo.Constraint.Skip
-                return m.bldg_b[s, t - 1] + m.bldg_a[s, t] <= 1
-            
-        if self.mode is Mode.NO_OFFSET or enforce_breaks:
+        if self.require_break_constraints_default or enforce_breaks:
             # Require at least one break for visitors within the configured break window
             @m.Constraint(m.visitors)
             def student_breaks(m, s):
                 return sum(m.y[s, f, t] for f in m.faculty for t in m.break_options) <= len(m.break_options) - 1
 
-        if self.mode is Mode.NO_OFFSET or enforce_breaks:
+        if self.require_break_constraints_default or enforce_breaks:
             # Determine when faculty are in breaks
             @m.Constraint(m.faculty, m.break_options)
             def faculty_in_break(m, f, t):

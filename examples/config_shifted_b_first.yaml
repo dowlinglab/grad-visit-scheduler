@@ -5,8 +5,8 @@ building_order: ["BuildingA", "BuildingB"]
 movement:
   policy: none
   phase_slot:
-    BuildingA: 1
-    BuildingB: 2
+    BuildingA: 2
+    BuildingB: 1
 breaks: [3]
 
 areas: ["Area1", "Area2"]

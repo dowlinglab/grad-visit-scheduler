@@ -10,6 +10,7 @@ Top-level imports provided by `grad_visit_scheduler`:
 
 - `Scheduler`
 - `Mode`
+- `MovementPolicy`
 - `Solver`
 - `FacultyStatus`
 - `SolutionResult`
@@ -19,6 +20,9 @@ Top-level imports provided by `grad_visit_scheduler`:
 - `load_run_config`
 - `build_times_by_building`
 - `export_visitor_docx`
+
+Preferred interface note: use run-config `movement:` settings and
+`MovementPolicy`; `Mode` remains as a legacy compatibility enum.
 
 ## Top-N Review Helper
 

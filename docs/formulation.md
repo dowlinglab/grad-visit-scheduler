@@ -1,6 +1,7 @@
 # Mathematical Formulation
 
 This page documents the mixed-integer linear programming (MILP) model implemented in `Scheduler._build_model`.
+For usage-oriented movement configuration examples, see [Building Movement and Staggered Starts](movement.md).
 
 ## Code-Aligned Notation
 
@@ -11,16 +12,15 @@ This table maps the mathematical symbols to the exact Pyomo components in the co
 | $\mathcal{S}$ | `m.visitors` | Visitor set |
 | $\mathcal{F}$ | `m.faculty` | Faculty set with non-empty availability |
 | $\mathcal{T}$ | `m.time` | Time-slot index set |
-| $\mathcal{F}_A$ | `m.building_a` | Faculty in building A |
-| $\mathcal{F}_B$ | `m.building_b` | Faculty in building B |
+| $\mathcal{K}$ | `m.buildings` | Building set |
+| $\mathcal{F}_k$ | `m.faculty_by_building[k]` | Faculty assigned to building $k$ |
 | $\mathcal{B}$ | `m.break_options` | Candidate break slots |
 | $w_{sf}$ | `m.weights[s, f]` | Utility weight for visitor-faculty match |
 | $p$ | `m.penalty` | Group penalty coefficient |
 | $y_{sft}$ | `m.y[s, f, t]` | Meeting assignment decision variable |
 | $z_{ft}$ | `m.beyond_one_visitor[f, t]` | Visitors beyond one in a meeting |
 | $q_f$ | `m.faculty_too_many_meetings[f]` | Overload indicator |
-| $A_{st}$ | `m.bldg_a[s, t]` | Visitor in building A at slot $t$ |
-| $B_{st}$ | `m.bldg_b[s, t]` | Visitor in building B at slot $t$ |
+| $\beta_{skt}$ | `m.in_building[s, k, t]` | Visitor in building $k$ at slot $t$ (travel policy only) |
 | $r_{ft}$ | `m.faculty_breaks[f, t]` | Faculty break indicator |
 
 ## Worked Example Dataset
@@ -73,8 +73,8 @@ Faculty availability conflicts in this example:
 - $s \in \mathcal{S}$: visitors
 - $f \in \mathcal{F}$: faculty with at least one available time slot
 - $t \in \mathcal{T} = \{1, \dots, T\}$: time slots
-- $\mathcal{F}_A \subseteq \mathcal{F}$: faculty located in building A
-- $\mathcal{F}_B \subseteq \mathcal{F}$: faculty located in building B
+- $k \in \mathcal{K}$: buildings
+- $\mathcal{F}_k \subseteq \mathcal{F}$: faculty located in building $k$
 - $\mathcal{B} \subseteq \mathcal{T}$: configured break slot options
 
 ## Parameters
@@ -92,8 +92,7 @@ Faculty availability conflicts in this example:
 - $y_{sft} \in \{0,1\}$: 1 if visitor $s$ meets faculty $f$ at time $t$
 - $z_{ft} \ge 0$: number of visitors beyond one in faculty-time meeting $(f,t)$
 - $q_f \in \{0,1\}$: overload indicator for faculty $f$
-- $A_{st} \in \{0,1\}$: visitor $s$ is in building A at time $t$
-- $B_{st} \in \{0,1\}$: visitor $s$ is in building B at time $t$
+- $\beta_{skt} \in \{0,1\}$: visitor $s$ is in building $k$ at slot $t$ (only when `movement.policy = travel_time`)
 - $r_{ft} \in \{0,1\}$: faculty $f$ is on break at candidate break slot $t \in \mathcal{B}$
 
 ## Objective
@@ -185,55 +184,38 @@ $$
 \quad \forall f,t
 $$
 
-### 9. Building occupancy indicators
+### 9. Building phase constraints (`movement.phase_slot`)
+
+Each building $k$ has an earliest allowed meeting slot $\phi_k$:
 
 $$
-\sum_{f \in \mathcal{F}_A} y_{sft} \le A_{st}
-\quad \forall s,t
+y_{sft} \le \mathbf{1}\!\left[t \ge \phi_{\text{building}(f)}\right]
+\quad \forall s,f,t
 $$
 
-$$
-\sum_{f \in \mathcal{F}_B} y_{sft} \le B_{st}
-\quad \forall s,t
-$$
+This supports staggered schedules such as "Building A first" or "Building B first"
+without requiring a dedicated mode.
 
-### 10. Building movement constraints by mode
+### 10. Travel-time occupancy and lag constraints (`movement.policy = travel_time`)
 
-#### `Mode.BUILDING_A_FIRST`
+When travel-time constraints are enabled, occupancy indicators are linked by:
 
 $$
-B_{s,t-1} + A_{st} \le 1
-\quad \forall s,\; t>1
+\sum_{f \in \mathcal{F}_k} y_{sft} \le \beta_{skt}
+\quad \forall s,k,t
 $$
 
-Visitors may move from A to B but not return from B to A.
-
-#### `Mode.BUILDING_B_FIRST`
-
-$$
-A_{s,t-1} + B_{st} \le 1
-\quad \forall s,\; t>1
-$$
-
-Visitors may move from B to A but not return from A to B.
-
-#### `Mode.NO_OFFSET`
+For each building pair $(k,\ell)$ with lag $\tau_{k\ell} > 0$, transitions within
+the lag window are forbidden:
 
 $$
-A_{s,t-1} + B_{st} \le 1
-\quad \forall s,\; t>1
+\beta_{sk t_1} + \beta_{s\ell t_2} \le 1,
+\quad \forall s,\; k \ne \ell,\; 0 < t_2-t_1 \le \tau_{k\ell}
 $$
-
-$$
-B_{s,t-1} + A_{st} \le 1
-\quad \forall s,\; t>1
-$$
-
-Both directions require an intervening empty slot, enforcing travel via break.
 
 ### 11. Visitor break requirement
 
-Applied when mode is `NO_OFFSET` or `enforce_breaks=True`:
+Applied when break constraints are enabled (`movement` legacy `NO_OFFSET` compatibility or `enforce_breaks=True`):
 
 $$
 \sum_{f \in \mathcal{F}} \sum_{t \in \mathcal{B}} y_{sft}
@@ -245,7 +227,7 @@ Each visitor must have at least one break during the configured break window.
 
 ### 12. Faculty break variables and requirement
 
-Applied when mode is `NO_OFFSET` or `enforce_breaks=True`:
+Applied when break constraints are enabled:
 
 $$
 \sum_{s \in \mathcal{S}} y_{sft} \le G(1-r_{ft})
@@ -274,13 +256,12 @@ $$
 
 - The model is assembled in `Scheduler._build_model` and solved in `Scheduler._solve_model`.
 - Feasibility checks and diagnostics are available through `has_feasible_solution` and `infeasibility_report`.
-- Constraint activation depends on mode and `enforce_breaks` exactly as documented above.
+- Constraint activation depends on movement policy and `enforce_breaks` exactly as documented above.
 
 ## Example Solutions
 
 The table below was generated by solving the worked dataset with:
 
-- `mode=Mode.NO_OFFSET`
 - `solver=Solver.HIGHS`
 - `group_penalty=0.2`
 - `min_visitors=2`

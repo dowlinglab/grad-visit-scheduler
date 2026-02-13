@@ -237,3 +237,96 @@ def test_include_all_legacy_faculty_from_catalog(tmp_path: Path):
         },
     )
     assert "Legacy L" in s.faculty
+
+
+def test_single_building_movement_none_supported(tmp_path: Path):
+    """One-building schedules should work with movement policy set to none."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}],
+    )
+    s = Scheduler(
+        times_by_building={"BuildingA": ["1:00-1:25", "1:30-1:55"]},
+        student_data_filename=str(csv_path),
+        movement={"policy": "none", "phase_slot": {"BuildingA": 1}},
+        solver=Solver.HIGHS,
+        faculty_catalog={
+            "Faculty A": {
+                "building": "BuildingA",
+                "room": "101",
+                "areas": ["Area1"],
+                "status": "active",
+            }
+        },
+    )
+    assert s.buildings == ["BuildingA"]
+    assert s.movement_policy == "none"
+    assert s.building_phase_slot["BuildingA"] == 1
+
+
+def test_three_building_close_proximity_supported(tmp_path: Path):
+    """Three-building schedules should accept no-travel movement config."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty B", "Area1": "Area1", "Area2": "Area2"}],
+    )
+    s = Scheduler(
+        times_by_building={
+            "BuildingA": ["1:00-1:25", "1:30-1:55"],
+            "BuildingB": ["1:00-1:25", "1:30-1:55"],
+            "BuildingC": ["1:00-1:25", "1:30-1:55"],
+        },
+        student_data_filename=str(csv_path),
+        movement={
+            "policy": "none",
+            "phase_slot": {"BuildingA": 1, "BuildingB": 1, "BuildingC": 1},
+        },
+        solver=Solver.HIGHS,
+        faculty_catalog={
+            "Faculty A": {"building": "BuildingA", "room": "101", "areas": ["Area1"], "status": "active"},
+            "Faculty B": {"building": "BuildingB", "room": "201", "areas": ["Area1"], "status": "active"},
+            "Faculty C": {"building": "BuildingC", "room": "301", "areas": ["Area1"], "status": "active"},
+        },
+    )
+    assert len(s.buildings) == 3
+    assert set(s.building_phase_slot.keys()) == {"BuildingA", "BuildingB", "BuildingC"}
+
+
+def test_travel_time_policy_builds_in_building_vars(tmp_path: Path):
+    """Travel-time movement policy should create occupancy variables in model."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}],
+    )
+    s = Scheduler(
+        times_by_building={
+            "BuildingA": ["1:00-1:25", "1:30-1:55", "2:00-2:25"],
+            "BuildingB": ["1:00-1:25", "1:30-1:55", "2:00-2:25"],
+        },
+        student_data_filename=str(csv_path),
+        movement={
+            "policy": "travel_time",
+            "phase_slot": {"BuildingA": 1, "BuildingB": 1},
+            "travel_slots": {
+                "BuildingA": {"BuildingA": 0, "BuildingB": 1},
+                "BuildingB": {"BuildingA": 1, "BuildingB": 0},
+            },
+        },
+        solver=Solver.HIGHS,
+        faculty_catalog={
+            "Faculty A": {"building": "BuildingA", "room": "101", "areas": ["Area1"], "status": "active"},
+            "Faculty B": {"building": "BuildingB", "room": "201", "areas": ["Area2"], "status": "active"},
+        },
+    )
+    s._build_model(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=2,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+    )
+    assert hasattr(s.model, "in_building")

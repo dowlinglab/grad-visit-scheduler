@@ -77,15 +77,14 @@ Manual release workflow runs are also supported (`workflow_dispatch`):
 
 ```python
 from pathlib import Path
-from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
+from grad_visit_scheduler import scheduler_from_configs, Solver
 
 root = Path("examples")
 
 s = scheduler_from_configs(
     root / "faculty_example.yaml",
-    root / "config_basic.yaml",
+    root / "config_two_buildings_close.yaml",
     root / "data_fake_visitors.csv",
-    mode=Mode.NO_OFFSET,
     solver=Solver.HIGHS,
 )
 
@@ -108,16 +107,19 @@ Note: the `examples/` folder referenced above is included in the repository,
 but it is not packaged on PyPI. If you installed from PyPI, clone the repo
 to access the example files.
 
-## Buildings
+## Buildings and Movement
 
 Notre Dame CBE is split across two buildings (Nieuwland Science Hall and McCourtney Hall) separated by about a 7-minute walk. A key aspect of the scheduler is to ensure that any visitor who needs to move buildings does so during their break slot. A typical schedule uses six meeting slots, and each visitor and faculty member gets at least one middle-slot break.
 
-The run config defines exactly two buildings, and `building_order` declares which one is Building A versus Building B. Mode controls how movement between buildings is constrained:
+The run config now supports one, two, or many buildings. `building_order` controls plotting/export ordering. Movement behavior is configured with the `movement` section:
 
-- `Mode.BUILDING_A_FIRST`: visitor starts in Building A, then may move to B
-- `Mode.BUILDING_B_FIRST`: visitor starts in Building B, then may move to A
-- `Mode.NO_OFFSET`: visitor may move either direction, but only with an empty slot
+- `movement.policy: none`: close-proximity buildings; no explicit travel-time constraints.
+- `movement.policy: travel_time`: explicit inter-building travel-time lag constraints.
+- `movement.phase_slot`: earliest slot allowed by building (for staggered starts like Building A first vs Building B first).
 
+Legacy `Mode.*` options are still available with `FutureWarning`.
+
+See [`docs/movement.md`](docs/movement.md) and `scripts/run_shifted_start_comparison.py` for full examples.
 ## Refine the Schedule
 
 The solver exposes several tunable parameters on `schedule_visitors` to refine the schedule:

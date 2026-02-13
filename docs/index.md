@@ -51,6 +51,7 @@ Full setup, model details, and solver outputs are documented in [Quickstart](qui
 
 installation
 quickstart
+movement
 api
 formulation
 releasing

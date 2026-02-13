@@ -124,15 +124,15 @@ def test_missing_buildings_in_run_config_raises(tmp_path: Path):
 
 
 def test_invalid_building_order_shape_raises(tmp_path: Path):
-    """Raise when building_order is not a list of exactly two names."""
+    """Raise when building_order is empty."""
     run_yaml = tmp_path / "run.yaml"
     run_yaml.write_text(
         "buildings:\n"
         "  BuildingA: ['1:00-1:25']\n"
         "  BuildingB: ['1:00-1:25']\n"
-        "building_order: ['BuildingA']\n"
+        "building_order: []\n"
     )
-    with pytest.raises(ValueError, match="exactly two"):
+    with pytest.raises(ValueError, match="non-empty"):
         load_run_config(run_yaml)
 
 
@@ -146,6 +146,34 @@ def test_invalid_building_order_missing_entries_raises(tmp_path: Path):
         "building_order: ['BuildingA', 'BuildingC']\n"
     )
     with pytest.raises(ValueError, match="entries not found"):
+        load_run_config(run_yaml)
+
+
+def test_invalid_movement_policy_raises(tmp_path: Path):
+    """Raise when movement.policy is unsupported."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "movement:\n"
+        "  policy: teleport\n"
+    )
+    with pytest.raises(ValueError, match="movement.policy"):
+        load_run_config(run_yaml)
+
+
+def test_invalid_phase_slot_out_of_range_raises(tmp_path: Path):
+    """Raise when phase slot is outside configured slot range."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25', '1:30-1:55']\n"
+        "movement:\n"
+        "  policy: none\n"
+        "  phase_slot:\n"
+        "    BuildingA: 3\n"
+    )
+    with pytest.raises(ValueError, match="movement.phase_slot"):
         load_run_config(run_yaml)
 
 

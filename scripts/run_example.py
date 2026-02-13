@@ -11,15 +11,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from grad_visit_scheduler import scheduler_from_configs, Mode, Solver  # noqa: E402
+from grad_visit_scheduler import scheduler_from_configs, Solver  # noqa: E402
 
 examples = ROOT / "examples"
 
 s = scheduler_from_configs(
     examples / "faculty_example.yaml",
-    examples / "config_basic.yaml",
+    examples / "config_two_buildings_close.yaml",
     examples / "data_fake_visitors.csv",
-    mode=Mode.NO_OFFSET,
     solver=Solver.HIGHS,
 )
 
