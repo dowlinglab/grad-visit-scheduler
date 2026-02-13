@@ -53,4 +53,5 @@ installation
 quickstart
 api
 formulation
+releasing
 ```
