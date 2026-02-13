@@ -6,7 +6,7 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 
 ## [Unreleased]
 
-## [0.2.0] - Upcoming
+## [0.2.0] - 2026-02-13
 
 ### Added
 - Top-N schedule generation via no-good integer cuts (`schedule_visitors_top_n`).
