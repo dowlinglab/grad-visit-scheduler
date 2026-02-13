@@ -270,6 +270,34 @@ y_{sft} = 0
 \quad \forall (s,t) \text{ not available to visitor } s,\; \forall f
 $$
 
+## Top-N No-Good Cuts
+
+When `schedule_visitors_top_n(...)` is used, the model is re-solved multiple
+times. After each feasible solution, a no-good cut is added so the next solve
+must differ in at least one binary assignment.
+
+Let $\bar{y}_{sft} \in \{0,1\}$ be the assignment from the previously found
+solution. Define:
+
+- $\mathcal{A} = \{(s,f,t) : \bar{y}_{sft} = 1\}$ (active assignments)
+- $\mathcal{I} = \{(s,f,t) : \bar{y}_{sft} = 0\}$ (inactive assignments)
+
+The no-good cut is:
+
+$$
+\sum_{(s,f,t)\in\mathcal{A}} (1 - y_{sft})
+\;+\;
+\sum_{(s,f,t)\in\mathcal{I}} y_{sft}
+\;\ge\; 1
+$$
+
+Interpretation:
+
+- If the new solution exactly matches the previous one, every term is zero,
+  violating the cut.
+- Therefore, at least one assignment must flip, guaranteeing a distinct
+  schedule.
+
 ## Notes on Implementation
 
 - The model is assembled in `Scheduler._build_model` and solved in `Scheduler._solve_model`.
