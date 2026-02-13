@@ -48,7 +48,7 @@ s = scheduler_from_configs(
     solver=Solver.HIGHS,
 )
 
-s.schedule_visitors(
+sol = s.schedule_visitors(
     group_penalty=0.2,
     min_visitors=2,
     max_visitors=8,
@@ -59,9 +59,10 @@ s.schedule_visitors(
     run_name="formulation_demo",
 )
 
-if s.has_feasible_solution():
-    s.show_faculty_schedule(save_files=True)
-    s.show_visitor_schedule(save_files=True)
+if sol is not None:
+    sol.plot_faculty_schedule(save_files=True, show_solution_rank=False)
+    sol.plot_visitor_schedule(save_files=True, show_solution_rank=False)
+    sol.export_visitor_docx("visitor_schedule.docx")
 else:
     print(s.infeasibility_report())
 ```
@@ -94,13 +95,15 @@ How to interpret these plots:
 - Visitor-view bars are labeled `Faculty (Building)`. Missing blocks indicate breaks/travel slots.
 - In the faculty-view y-axis labels, the number in parentheses is each faculty member's total scheduled meetings. Missing blocks indicate faculty conflict. Blocks without a visitor name indicate a break (unused meeting).
 
-Generate a DOCX schedule:
+Preferred DOCX export path:
 
 ```python
-from grad_visit_scheduler import export_visitor_docx
-
-export_visitor_docx(s, "visitor_schedule.docx")
+if sol is not None:
+    sol.export_visitor_docx("visitor_schedule.docx")
 ```
+
+Legacy helper note: `grad_visit_scheduler.export_visitor_docx(...)` is still
+available for compatibility and emits `FutureWarning`.
 
 Optional diagnostics:
 

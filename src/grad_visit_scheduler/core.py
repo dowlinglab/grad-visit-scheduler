@@ -1131,7 +1131,17 @@ class Scheduler:
         ax.set_title('Graduate Student Interview Preferences')
         return fig, ax
 
-    def schedule_visitors(self, group_penalty=0.1, min_visitors=0, max_visitors=8, min_faculty=0, max_group=2, enforce_breaks=False, tee=False, run_name=''):
+    def schedule_visitors(
+        self,
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=8,
+        min_faculty=0,
+        max_group=2,
+        enforce_breaks=False,
+        tee=False,
+        run_name='',
+    ):
         """Solve the mixed-integer scheduling model.
 
         Parameters
@@ -1154,6 +1164,13 @@ class Scheduler:
             If ``True``, stream solver output.
         run_name:
             Optional suffix for saved plot filenames.
+
+        Returns
+        -------
+        SolutionResult | None
+            Snapshot of the solved schedule when a feasible solution is found.
+            Returns ``None`` if the solve is infeasible or otherwise has no
+            feasible assignment.
         """
 
         self.last_solve_params = {
@@ -1168,6 +1185,9 @@ class Scheduler:
         self._solve_model(tee)
         self.run_name = run_name
         self.last_solution_set = None
+        if self.has_feasible_solution():
+            return self.current_solution()
+        return None
 
     def schedule_visitors_top_n(
         self,
@@ -1618,13 +1638,28 @@ class Scheduler:
         lines.append("Try reducing min_faculty/min_visitors or loosening availability.")
         return "\n".join(lines)
 
-    def _current_solution_result(self):
-        """Return a rich snapshot for the currently loaded feasible model."""
+    def current_solution(self):
+        """Return a rich snapshot for the currently loaded feasible model.
+
+        Returns
+        -------
+        SolutionResult
+            Immutable snapshot of the currently loaded solved assignment.
+
+        Raises
+        ------
+        RuntimeError
+            If no feasible solution is currently loaded.
+        """
         if not self.has_feasible_solution():
             raise RuntimeError(
                 f"No feasible solution available (termination: {getattr(self, 'last_termination_condition', None)})."
             )
         return self._snapshot_solution(rank=1)
+
+    def _current_solution_result(self):
+        """Backward-compatible alias for :meth:`current_solution`."""
+        return self.current_solution()
 
     def show_faculty_schedule(self, save_files=True, abbreviate_student_names=True, solution=None, show_solution_rank=False):
         """Plot the solved schedule grouped by faculty.
@@ -1645,7 +1680,7 @@ class Scheduler:
         warnings.warn(
             "Scheduler.show_faculty_schedule(...) is a legacy interface. "
             "Prefer SolutionResult.plot_faculty_schedule(...) via "
-            "Scheduler.last_solution_set.get(rank) or SolutionSet.plot_faculty_schedule(...).",
+            "sol = Scheduler.schedule_visitors(...) or Scheduler.current_solution().",
             FutureWarning,
             stacklevel=2,
         )
@@ -1677,7 +1712,7 @@ class Scheduler:
         warnings.warn(
             "Scheduler.show_visitor_schedule(...) is a legacy interface. "
             "Prefer SolutionResult.plot_visitor_schedule(...) via "
-            "Scheduler.last_solution_set.get(rank) or SolutionSet.plot_visitor_schedule(...).",
+            "sol = Scheduler.schedule_visitors(...) or Scheduler.current_solution().",
             FutureWarning,
             stacklevel=2,
         )
@@ -1704,7 +1739,7 @@ class Scheduler:
         warnings.warn(
             "Scheduler.export_visitor_docx(...) is a legacy interface. "
             "Prefer SolutionResult.export_visitor_docx(...) via "
-            "Scheduler.last_solution_set.get(rank) or SolutionSet.export_visitor_docx(...).",
+            "sol = Scheduler.schedule_visitors(...) or Scheduler.current_solution().",
             FutureWarning,
             stacklevel=2,
         )

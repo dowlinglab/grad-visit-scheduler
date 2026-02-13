@@ -24,6 +24,23 @@ Top-level imports provided by `grad_visit_scheduler`:
 Preferred interface note: use run-config `movement:` settings and
 `MovementPolicy`; `Mode` remains as a legacy compatibility enum.
 
+## Preferred Single-Solution Workflow
+
+For single-solution solves, use `schedule_visitors(...)` directly:
+
+```python
+sol = s.schedule_visitors(...)
+if sol is not None:
+    sol.plot_faculty_schedule(save_files=True)
+    sol.plot_visitor_schedule(save_files=True)
+    sol.export_visitor_docx("visitor_schedule.docx")
+else:
+    print(s.infeasibility_report())
+```
+
+You can also access the loaded solved snapshot with `Scheduler.current_solution()`.
+This raises `RuntimeError` if no feasible solution is loaded.
+
 ## Top-N Review Helper
 
 `SolutionSet.summarize(...)` packages the common "review top-N solutions" workflow:
@@ -75,7 +92,7 @@ iteration. In this case:
 - `Scheduler.last_solution_set` points to that `SolutionSet`.
 - `Scheduler.results` / `has_feasible_solution()` remain aligned with the last
   feasible loaded model state.
-- `Scheduler._current_solution_result()` therefore returns the last feasible
+- `Scheduler.current_solution()` therefore returns the last feasible
   schedule (with rank `1` as a current-state snapshot rank).
 
 This behavior is intentional so legacy scheduler-level plotting/export methods

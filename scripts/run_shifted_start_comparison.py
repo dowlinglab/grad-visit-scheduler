@@ -53,7 +53,7 @@ def main():
             print(s.infeasibility_report())
             continue
 
-        sol = s._current_solution_result()
+        sol = s.current_solution()
         summary = sol.summary_row(best_objective=sol.objective_value)
         rows.append(
             {

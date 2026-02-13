@@ -18,6 +18,8 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 - New comparison script for generalized building configurations:
   - `scripts/run_building_configuration_examples.py`.
 - New/expanded movement example configs and catalogs in `examples/`.
+- Public `Scheduler.current_solution()` accessor for retrieving the currently
+  loaded feasible `SolutionResult` snapshot.
 
 ### Changed
 - `Scheduler` now treats movement config as the preferred interface; legacy `Mode` is compatibility-only.
@@ -27,10 +29,19 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
   - explicit Top-N no-good-cut equation section.
 - Quickstart/API docs now cross-reference movement usage and updated model sections.
 - Building-configuration examples now use the larger formulation dataset to better expose edge cases while remaining fast to solve.
+- `Scheduler.schedule_visitors(...)` now returns `SolutionResult` on feasible
+  solves and `None` when no feasible solution is found.
+- Primary README/quickstart/scripts now use the modern single-solution flow
+  (`sol = s.schedule_visitors(...)`) for plotting and DOCX export.
+- Legacy mode migration guidance now explicitly documents mode-to-movement
+  mappings and the break-behavior nuance for `NO_OFFSET`.
 
 ### Deprecated
 - Explicit legacy `mode=...` scheduling interface now emits `FutureWarning` for all modes (`BUILDING_A_FIRST`, `BUILDING_B_FIRST`, and `NO_OFFSET`).
 - Passing both `mode` and `movement` emits `FutureWarning` and ignores `mode`.
+- Top-level `grad_visit_scheduler.export_visitor_docx(...)` remains available
+  for compatibility and continues to emit `FutureWarning`; prefer
+  `SolutionResult.export_visitor_docx(...)`.
 
 ## [0.2.1] - 2026-02-13
 

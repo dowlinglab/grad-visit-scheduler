@@ -163,3 +163,51 @@ This prints a side-by-side summary table with objective and assignment metrics.
 `mode=Mode.BUILDING_A_FIRST`, `mode=Mode.BUILDING_B_FIRST`, and
 `mode=Mode.NO_OFFSET` remain available with `FutureWarning`, but `movement` is
 the preferred interface for new code.
+
+## Legacy Mode Migration Guide
+
+Equivalent `movement` mappings:
+
+- `Mode.BUILDING_A_FIRST`:
+
+```yaml
+movement:
+  policy: none
+  phase_slot:
+    BuildingA: 1
+    BuildingB: 2
+```
+
+- `Mode.BUILDING_B_FIRST`:
+
+```yaml
+movement:
+  policy: none
+  phase_slot:
+    BuildingA: 2
+    BuildingB: 1
+```
+
+- `Mode.NO_OFFSET`:
+
+```yaml
+movement:
+  policy: travel_time
+  phase_slot:
+    BuildingA: 1
+    BuildingB: 1
+  travel_slots:
+    BuildingA:
+      BuildingA: 0
+      BuildingB: 1
+    BuildingB:
+      BuildingA: 1
+      BuildingB: 0
+```
+
+Break-behavior nuance:
+
+- Legacy `Mode.NO_OFFSET` implicitly enables break constraints by default.
+- Movement-only configs do **not** implicitly enable break constraints.
+- To match legacy `NO_OFFSET` break behavior, set `enforce_breaks=True` in
+  `schedule_visitors(...)` / `schedule_visitors_top_n(...)`.

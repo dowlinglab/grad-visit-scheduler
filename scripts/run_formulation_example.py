@@ -22,7 +22,7 @@ s = scheduler_from_configs(
     solver=Solver.HIGHS,
 )
 
-s.schedule_visitors(
+sol = s.schedule_visitors(
     group_penalty=0.2,
     min_visitors=2,
     max_visitors=8,
@@ -33,9 +33,9 @@ s.schedule_visitors(
     run_name="formulation_demo",
 )
 
-if s.has_feasible_solution():
-    s.show_faculty_schedule(save_files=True)
-    s.show_visitor_schedule(save_files=True)
+if sol is not None:
+    sol.plot_faculty_schedule(save_files=True, show_solution_rank=False)
+    sol.plot_visitor_schedule(save_files=True, show_solution_rank=False)
     print("Feasible solution found.")
 else:
     print(s.infeasibility_report())

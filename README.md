@@ -82,16 +82,16 @@ from grad_visit_scheduler import scheduler_from_configs, Solver
 root = Path("examples")
 
 s = scheduler_from_configs(
-    root / "faculty_example.yaml",
+    root / "faculty_formulation.yaml",
     root / "config_two_buildings_close.yaml",
-    root / "data_fake_visitors.csv",
+    root / "data_formulation_visitors.csv",
     solver=Solver.HIGHS,
 )
 
-s.schedule_visitors(
-    group_penalty=0.1,
-    min_visitors=0,
-    max_visitors=4,
+sol = s.schedule_visitors(
+    group_penalty=0.2,
+    min_visitors=2,
+    max_visitors=8,
     min_faculty=1,
     max_group=2,
     enforce_breaks=True,
@@ -99,8 +99,12 @@ s.schedule_visitors(
     run_name="demo",
 )
 
-if s.has_feasible_solution():
-    s.show_visitor_schedule(save_files=True)
+if sol is not None:
+    sol.plot_visitor_schedule(save_files=True, show_solution_rank=False)
+    sol.plot_faculty_schedule(save_files=True, show_solution_rank=False)
+    sol.export_visitor_docx("visitor_schedule.docx")
+else:
+    print(s.infeasibility_report())
 ```
 
 Note: the `examples/` folder referenced above is included in the repository,
@@ -144,13 +148,16 @@ print(report["compact"])
 
 ## Export DOCX
 
-You can optionally export customized visitor schedules to a DOCX file. This facilitates easy copy/paste into individualized agendas for each visitor.
+Preferred modern path:
 
 ```python
-from grad_visit_scheduler import export_visitor_docx
-
-export_visitor_docx(s, "visitor_schedule.docx")
+sol = s.schedule_visitors(...)
+if sol is not None:
+    sol.export_visitor_docx("visitor_schedule.docx")
 ```
+
+Legacy helper `grad_visit_scheduler.export_visitor_docx(...)` remains available
+for compatibility but emits `FutureWarning`.
 
 ## License
 
