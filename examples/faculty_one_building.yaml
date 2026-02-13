@@ -1,16 +1,31 @@
 faculty:
-  Faculty A:
-    building: BuildingA
-    room: "101"
-    areas: ["Area1"]
+  Prof. A:
+    building: ABC
+    room: "201"
+    areas: ["Energy", "Theory"]
     status: active
-  Faculty B:
-    building: BuildingA
+  Prof. B:
+    building: ABC
     room: "102"
-    areas: ["Area2"]
+    areas: ["Bio"]
     status: active
-  Faculty C:
-    building: BuildingA
-    room: "103"
-    areas: ["Area1", "Area2"]
+  Prof. C:
+    building: ABC
+    room: "203"
+    areas: ["Theory"]
+    status: active
+  Prof. D:
+    building: ABC
+    room: "104"
+    areas: ["Energy"]
+    status: active
+  Prof. E:
+    building: ABC
+    room: "205"
+    areas: ["Bio", "Energy"]
+    status: active
+  Prof. F:
+    building: ABC
+    room: "106"
+    areas: ["Theory", "Bio"]
     status: active

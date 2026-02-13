@@ -165,6 +165,8 @@ Repository examples:
 
 - `examples/config_shifted_a_first.yaml`
 - `examples/config_shifted_b_first.yaml`
+- `examples/faculty_formulation.yaml`
+- `examples/data_formulation_visitors.csv`
 
 Comparison runner:
 

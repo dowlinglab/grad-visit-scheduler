@@ -16,16 +16,16 @@ from grad_visit_scheduler import scheduler_from_configs, Solver  # noqa: E402
 examples = ROOT / "examples"
 
 s = scheduler_from_configs(
-    examples / "faculty_example.yaml",
+    examples / "faculty_formulation.yaml",
     examples / "config_two_buildings_close.yaml",
-    examples / "data_fake_visitors.csv",
+    examples / "data_formulation_visitors.csv",
     solver=Solver.HIGHS,
 )
 
 s.schedule_visitors(
-    group_penalty=0.1,
-    min_visitors=0,
-    max_visitors=4,
+    group_penalty=0.2,
+    min_visitors=2,
+    max_visitors=8,
     min_faculty=1,
     max_group=2,
     enforce_breaks=True,
