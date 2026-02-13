@@ -24,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 cbc = []
 gurobi = []
-dev = ["pytest"]
+dev = ["pytest", "pytest-cov"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
