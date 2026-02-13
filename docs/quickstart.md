@@ -149,6 +149,10 @@ if len(top) > 0:
     top.export_visitor_docx("visitor_schedule_rank1.docx", rank=1)
 ```
 
+Developer note: if `n_solutions` exceeds the number of unique feasible
+schedules, `top` contains all feasible unique schedules found, and the
+`Scheduler` object remains at the last feasible loaded solution state.
+
 Repository script for this workflow:
 
 ```bash

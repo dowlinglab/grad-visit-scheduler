@@ -416,3 +416,32 @@ def test_top_n_no_good_cut_exhausts_tied_two_solution_case(tmp_path: Path):
         slot_by_rank[sol.rank] = slot
     assert set(slot_by_rank.values()) == {1, 2}
     assert top.get(1).objective_value == pytest.approx(top.get(2).objective_value)
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_top_n_exhaustion_preserves_last_feasible_solver_state(tmp_path: Path):
+    """After top-N exhaustion, scheduler state should remain at last feasible solve."""
+    s = _build_two_slot_single_faculty_scheduler(tmp_path)
+    top = s.schedule_visitors_top_n(
+        n_solutions=5,
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="two_slot_state",
+    )
+
+    # Model has only two unique schedules; top-N exits on a later infeasible attempt.
+    assert len(top) == 2
+    assert s.last_solution_set is top
+
+    # Current scheduler-facing state remains feasible and points to the last
+    # feasible solution encountered before exhaustion.
+    assert s.has_feasible_solution()
+    assert s.infeasibility_report() == "Solution is feasible."
+    current = s._current_solution_result()
+    assert current.rank == 1
+    assert current.active_meetings == top.get(len(top)).active_meetings
