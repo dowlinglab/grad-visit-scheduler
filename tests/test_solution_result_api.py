@@ -15,6 +15,7 @@ from grad_visit_scheduler import (
     Scheduler,
     Mode,
     Solver,
+    SolutionSet,
     scheduler_from_configs,
     export_visitor_docx,
 )
@@ -77,6 +78,32 @@ def _build_tiny_scheduler(tmp_path: Path, mode: Mode = Mode.BUILDING_A_FIRST) ->
         times_by_building=times_by_building,
         student_data_filename=str(csv_path),
         mode=mode,
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+
+
+def _build_two_slot_single_faculty_scheduler(tmp_path: Path) -> Scheduler:
+    """Build a tiny scheduler with exactly two tied-optimal schedules."""
+    csv_path = tmp_path / "visitors_two_slot.csv"
+    csv_path.write_text("Name,Prof1,Area1,Area2\nVisitor 1,Faculty A,Area1,Area1\n", encoding="utf-8")
+
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    return Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_A_FIRST,
         solver=Solver.HIGHS,
         faculty_catalog=faculty_catalog,
     )
@@ -330,9 +357,62 @@ def test_top_n_first_infeasible_path_and_report(tmp_path: Path):
     assert not s.has_feasible_solution()
     report = s.infeasibility_report()
     assert "Termination:" in report
+    assert "Infeasibility likely: min_visitors requirement exceeds total capacity." in report
+    assert "Faculty with insufficient availability for min_visitors:" in report
+    assert "Capacity (students): 1, Capacity (faculty): 1, Effective capacity: 1" in report
+    assert "Required meetings from faculty (min_visitors): 2" in report
 
 
 def test_infeasibility_report_without_results(tmp_path: Path):
     """Infeasibility report should handle pre-solve state."""
     s = _build_tiny_scheduler(tmp_path)
     assert s.infeasibility_report() == "No solver results available."
+
+
+def test_solution_set_empty_and_rank_bounds():
+    """SolutionSet should handle empty collection and invalid rank access."""
+    empty = SolutionSet([])
+    assert len(empty) == 0
+    with pytest.raises(IndexError, match="out of bounds"):
+        empty.get(1)
+
+    summary = empty.to_dataframe()
+    assert summary.empty
+
+    report = empty.summarize(ranks_to_plot=(1, 2), save_files=False, export_docx=True)
+    assert report["summary"].empty
+    assert report["compact"].empty
+    assert report["plotted_ranks"] == ()
+    assert report["visitor_plot_files"] == ()
+    assert report["faculty_plot_files"] == ()
+    assert report["docx_files"] == ()
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_top_n_no_good_cut_exhausts_tied_two_solution_case(tmp_path: Path):
+    """No-good cuts should enumerate exactly two tied slot choices then stop."""
+    s = _build_two_slot_single_faculty_scheduler(tmp_path)
+    top = s.schedule_visitors_top_n(
+        n_solutions=3,
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="two_slot_tied",
+    )
+
+    assert len(top) == 2
+    assert hasattr(s.model, "no_good_cuts")
+    assert len(s.model.no_good_cuts) == 2
+
+    # Each solution has exactly one meeting, and they should differ by slot.
+    slot_by_rank = {}
+    for sol in top.solutions:
+        assert len(sol.active_meetings) == 1
+        (_, _, slot) = next(iter(sol.active_meetings))
+        slot_by_rank[sol.rank] = slot
+    assert set(slot_by_rank.values()) == {1, 2}
+    assert top.get(1).objective_value == pytest.approx(top.get(2).objective_value)
