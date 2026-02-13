@@ -2,6 +2,8 @@
 
 [![Docs Latest](https://img.shields.io/badge/docs-latest-2E86C1?logo=readthedocs&logoColor=white)](https://grad-visit-scheduler.readthedocs.io/en/latest/)
 [![Docs Stable](https://img.shields.io/badge/docs-stable-2EA043?logo=readthedocs&logoColor=white)](https://grad-visit-scheduler.readthedocs.io/en/stable/)
+[![CI](https://github.com/dowlinglab/grad-visit-scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/dowlinglab/grad-visit-scheduler/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/dowlinglab/grad-visit-scheduler/graph/badge.svg)](https://codecov.io/gh/dowlinglab/grad-visit-scheduler)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dowlinglab/grad-visit-scheduler/blob/main/examples/large_example_colab.ipynb)
 
 MILP-based scheduling utilities for graduate visit days. Created by [Alex Dowling](https://engineering.nd.edu/faculty/alexander-dowling/) and [Jeff Kantor](https://engineering.nd.edu/news/in-memoriam-jeffrey-kantor-former-vice-president-associate-provost-and-dean/) at the University of Notre Dame.
@@ -42,6 +44,13 @@ Solver setup:
 ```bash
 conda install -c conda-forge coincbc
 ```
+
+## CI and Coverage
+
+GitHub Actions runs the test suite on pushes to `main` and on pull requests
+targeting `main`. Coverage is uploaded to Codecov from the Python 3.11 job.
+For this public repository, coverage upload uses GitHub OIDC (no
+`CODECOV_TOKEN` secret required).
 
 ## Quickstart
 

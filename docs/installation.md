@@ -21,6 +21,17 @@ Some tests are solver-optional (`tests/test_solver_optional.py`) and will
 automatically skip if a backend is not installed. For example, CBC-specific
 checks are skipped unless `coincbc` is available in the active environment.
 
+## GitHub Actions and Codecov
+
+Repository CI is configured in `.github/workflows/ci.yml` to run tests on:
+
+- push to `main`
+- pull requests targeting `main`
+
+Coverage is generated with `pytest-cov` and uploaded to Codecov from one matrix
+job. For this public repository, Codecov upload uses GitHub OIDC and does not
+require a `CODECOV_TOKEN` secret.
+
 ## Optional local docs build
 
 From the repository root:

@@ -1,0 +1,19 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+    patch:
+      default:
+        target: 75%
+        threshold: 1%
+
+ignore:
+  - "tests/*"
+  - "docs/*"
+  - "examples/*"
+  - "scripts/*"
