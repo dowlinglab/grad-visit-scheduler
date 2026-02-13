@@ -65,6 +65,13 @@ Releases are tag-driven via GitHub Actions:
 Publishing uses PyPI Trusted Publishing (OIDC), so no API token secret is required.
 Configure both PyPI and TestPyPI trusted publishers to point to this repository
 and the `release.yml` workflow file.
+Detailed release instructions are in [`docs/releasing.md`](docs/releasing.md).
+
+Manual release workflow runs are also supported (`workflow_dispatch`):
+
+- `target=testpypi`: build, publish to TestPyPI, smoke install, stop.
+- `target=pypi`: run the full pipeline (TestPyPI + smoke + PyPI publish).
+- Optional `version` input lets smoke install pin a specific version.
 
 ## Quickstart
 
