@@ -6,6 +6,8 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-13
+
 ### Added
 - Release checklist quick reference table in `docs/releasing.md` for streamlined release workflows.
 
