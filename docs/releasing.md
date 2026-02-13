@@ -7,6 +7,19 @@ Workflow file:
 
 - `.github/workflows/release.yml`
 
+## Release Checklist (Quick Reference)
+
+| Stage | Check | Command / Action |
+| --- | --- | --- |
+| Pre-flight | On `main`, clean working tree | `git checkout main && git pull origin main && git status` |
+| Pre-flight | Version/changelog updated | Verify `pyproject.toml` and `CHANGELOG.md` |
+| Pre-flight | Tests pass locally | `pytest -q` |
+| Trigger (tag path) | Create and push tag | `git tag -a vX.Y.Z -m "Release X.Y.Z"` then `git push origin vX.Y.Z` |
+| Trigger (manual fallback) | Run workflow manually | GitHub Actions → `Release` → Run workflow (`target=pypi`, `version=X.Y.Z`) |
+| Verification | Confirm tag exists remotely | `git ls-remote --tags origin | grep vX.Y.Z` |
+| Verification | Confirm workflow completed | Check `Release` workflow run in GitHub Actions |
+| Verification | Confirm install/version | `python -m pip install --upgrade grad-visitor-scheduler` and `python -c "import grad_visit_scheduler as gvs; print(gvs.__version__)"` |
+
 ## Release Pipeline (Current Behavior)
 
 Trigger options:
@@ -93,6 +106,11 @@ python -c "import grad_visit_scheduler as gvs; print(gvs.__version__)"
   - Confirm version in `pyproject.toml` matches tag.
 - `File already exists` on publish:
   - That version is already uploaded; bump version and retag.
+- Tag exists but no `on: push` release workflow appears:
+  - Confirm tag exists on remote:
+    `git ls-remote --tags origin | grep vX.Y.Z`
+  - Use manual workflow dispatch on `main` as deterministic fallback:
+    `target=pypi`, `version=X.Y.Z`.
 - Build/test failures:
   - Release pipeline is intentionally blocked until tests/build succeed.
 

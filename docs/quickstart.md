@@ -67,6 +67,9 @@ else:
     print(s.infeasibility_report())
 ```
 
+The Top-N workflow in section 5 uses the preferred modern `SolutionSet` /
+`SolutionResult` interface for ranked schedules.
+
 ## 3) Key solver options
 
 Common options on `schedule_visitors(...)`:
