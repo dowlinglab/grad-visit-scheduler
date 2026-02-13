@@ -6,7 +6,7 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-02-13
+## [0.3.0] - Anticipated
 
 ### Added
 - New generalized building movement interface via run-config `movement`:

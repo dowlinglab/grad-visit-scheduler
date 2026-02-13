@@ -252,7 +252,7 @@ y_{sft} = 0
 \quad \forall (s,t) \text{ not available to visitor } s,\; \forall f
 $$
 
-### 14. Top-N No-Good Cuts
+## Top-N No-Good Cuts (Optional Multi-Solution Extension)
 
 When generating ranked alternatives, the model adds one no-good cut after each
 feasible solution to exclude the exact same binary assignment vector in later
