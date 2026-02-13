@@ -15,6 +15,7 @@ Top-level imports provided by `grad_visit_scheduler`:
 - `FacultyStatus`
 - `SolutionResult`
 - `SolutionSet`
+- `compute_min_travel_lags`
 - `scheduler_from_configs`
 - `load_faculty_catalog`
 - `load_run_config`
@@ -103,7 +104,6 @@ continue to operate after top-N exhaustion.
 ```{eval-rst}
 .. automodule:: grad_visit_scheduler.core
    :members:
-   :private-members:
    :special-members: __init__
 ```
 
