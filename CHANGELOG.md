@@ -10,9 +10,10 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 
 ### Added
 - New generalized building movement interface via run-config `movement`:
-  - `movement.policy` (`none` or `travel_time`),
+  - `movement.policy` (`none`, `travel_time`, or `nonoverlap_time`),
   - `movement.phase_slot` for per-building staggered starts,
   - `movement.travel_slots` for pairwise inter-building lag constraints.
+- Automatic lag derivation utility `compute_min_travel_lags(...)` for shifted/nonuniform building clocks.
 - Support for one-building and 3+ building close-proximity schedules (no hard two-building requirement).
 - New movement-focused docs page: `docs/movement.md`, with executable examples, result tables, and schedule visuals.
 - New comparison script for generalized building configurations:
@@ -35,6 +36,8 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
   (`sol = s.schedule_visitors(...)`) for plotting and DOCX export.
 - Legacy mode migration guidance now explicitly documents mode-to-movement
   mappings and the break-behavior nuance for `NO_OFFSET`.
+- Added shifted-clock safety warning for `movement.policy='none'`, plus auto
+  non-overlap movement options (`nonoverlap_time` and `travel_slots: auto`).
 
 ### Deprecated
 - Explicit legacy `mode=...` scheduling interface now emits `FutureWarning` for all modes (`BUILDING_A_FIRST`, `BUILDING_B_FIRST`, and `NO_OFFSET`).

@@ -20,11 +20,11 @@ Add a `movement` block to your run config:
 
 ```yaml
 movement:
-  policy: none          # or travel_time
+  policy: none          # or travel_time / nonoverlap_time
   phase_slot:
     BuildingA: 1
     BuildingB: 1
-  travel_slots:         # only used for policy: travel_time
+  travel_slots:         # used for policy: travel_time (or "auto")
     BuildingA:
       BuildingA: 0
       BuildingB: 1
@@ -35,7 +35,39 @@ movement:
 
 - `policy: none`: buildings are treated as close-proximity; no explicit travel-time constraints.
 - `policy: travel_time`: enforces pairwise building-to-building lag constraints using `travel_slots`.
+- `policy: nonoverlap_time`: automatically computes `travel_slots` from absolute slot timestamps to prevent real-time overlap.
 - `phase_slot`: earliest slot each building is allowed to host meetings. This enables staggered starts.
+- `travel_slots: auto`: available with `policy: travel_time`; computes lag matrix from timestamps.
+- `min_buffer_minutes`: optional extra buffer applied to auto-computed lag transitions.
+
+## Shifted Clock Safety
+
+If buildings use shifted/nonuniform clock grids (for example `1:00-1:25` in one
+building and `1:15-1:40` in another), `policy: none` can allow real-time
+visitor overlaps across adjacent slot indices.
+
+The scheduler now emits a warning for this configuration. Recommended fix:
+
+```yaml
+movement:
+  policy: nonoverlap_time
+  phase_slot:
+    MCH: 1
+    NSH: 2
+  min_buffer_minutes: 0
+```
+
+Equivalent explicit option:
+
+```yaml
+movement:
+  policy: travel_time
+  phase_slot:
+    MCH: 1
+    NSH: 2
+  travel_slots: auto
+  min_buffer_minutes: 0
+```
 
 ## Example Results
 
@@ -203,6 +235,16 @@ movement:
     BuildingB:
       BuildingA: 1
       BuildingB: 0
+```
+
+For shifted absolute slot clocks, prefer:
+
+```yaml
+movement:
+  policy: nonoverlap_time
+  phase_slot:
+    BuildingA: 1
+    BuildingB: 2
 ```
 
 Break-behavior nuance:

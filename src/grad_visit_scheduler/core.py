@@ -45,6 +45,7 @@ class MovementPolicy(Enum):
 
     NONE = "none"
     TRAVEL_TIME = "travel_time"
+    NONOVERLAP_TIME = "nonoverlap_time"
 
 def schedule_axes(figsize,nslots=7):
     """Create a matplotlib axis formatted for visit-day schedule plots.
@@ -90,6 +91,62 @@ def slot2min(slot):
     a, b = start.split(":")
     c, d = stop.split(":")
     return 60*int(a) + int(b), 60*int(c) + int(d)
+
+
+def _normalize_building_times(times_by_building):
+    """Return a copy of building time lists without the optional ``breaks`` key."""
+    return {k: v for k, v in times_by_building.items() if k != "breaks"}
+
+
+def compute_min_travel_lags(times_by_building, min_buffer_minutes=0):
+    """Derive minimum inter-building slot lags from absolute slot timestamps.
+
+    Parameters
+    ----------
+    times_by_building:
+        Mapping from building name to ordered slot labels (``"H:MM-H:MM"``).
+        A ``"breaks"`` key is ignored when present.
+    min_buffer_minutes:
+        Optional nonnegative buffer (in minutes) required between consecutive
+        meetings in different buildings.
+
+    Returns
+    -------
+    dict[str, dict[str, int]]
+        Pairwise lag matrix ``travel_slots[b_from][b_to]`` suitable for the
+        travel-time movement constraints. A lag value ``L`` forbids transitions
+        from slot ``t`` in ``b_from`` to slots ``t+1`` through ``t+L`` in
+        ``b_to``.
+    """
+    if int(min_buffer_minutes) < 0:
+        raise ValueError("min_buffer_minutes must be a nonnegative integer.")
+
+    buffer_minutes = int(min_buffer_minutes)
+    building_times = _normalize_building_times(times_by_building)
+    buildings = list(building_times.keys())
+    parsed = {b: [slot2min(slot) for slot in building_times[b]] for b in buildings}
+
+    lags = {}
+    for b_from in buildings:
+        row = {}
+        for b_to in buildings:
+            if b_from == b_to:
+                row[b_to] = 0
+                continue
+            required_lag = 0
+            for i, (_, end_from) in enumerate(parsed[b_from], start=1):
+                cutoff = end_from + buffer_minutes
+                max_forbidden_delta = 0
+                for j, (start_to, _) in enumerate(parsed[b_to], start=1):
+                    delta = j - i
+                    if delta <= 0:
+                        continue
+                    if start_to < cutoff:
+                        max_forbidden_delta = max(max_forbidden_delta, delta)
+                required_lag = max(required_lag, max_forbidden_delta)
+            row[b_to] = int(required_lag)
+        lags[b_from] = row
+    return lags
 
 def abbreviate_name(full_name):
     """Abbreviate a full name for compact schedule labels.
@@ -630,9 +687,10 @@ class Scheduler:
             Legacy building sequencing mode. Prefer ``movement``.
         movement:
             Optional movement configuration dictionary with keys:
-            ``policy`` (``"none"`` or ``"travel_time"``),
+            ``policy`` (``"none"``, ``"travel_time"``, or ``"nonoverlap_time"``),
             ``phase_slot`` (per-building earliest slot), and optional
-            ``travel_slots`` (pairwise slot lags for travel-time policies).
+            ``travel_slots`` (pairwise slot lags, or ``"auto"`` for timestamp-
+            derived lags), plus optional ``min_buffer_minutes`` for auto lags.
         solver:
             Solver backend used by :meth:`schedule_visitors`.
         include_legacy_faculty:
@@ -761,9 +819,18 @@ class Scheduler:
                 self.require_break_constraints_default = True
 
         policy = str(movement.get("policy", MovementPolicy.NONE.value)).lower()
-        if policy not in {MovementPolicy.NONE.value, MovementPolicy.TRAVEL_TIME.value}:
+        valid_policies = {
+            MovementPolicy.NONE.value,
+            MovementPolicy.TRAVEL_TIME.value,
+            MovementPolicy.NONOVERLAP_TIME.value,
+        }
+        if policy not in valid_policies:
             raise ValueError(f"Unsupported movement policy '{policy}'.")
         self.movement_policy = policy
+        uses_travel_constraints = policy in {
+            MovementPolicy.TRAVEL_TIME.value,
+            MovementPolicy.NONOVERLAP_TIME.value,
+        }
 
         phase_slot = dict(movement.get("phase_slot", {}))
         self.building_phase_slot = {}
@@ -776,8 +843,30 @@ class Scheduler:
             self.building_phase_slot[b] = val
 
         travel_slots = movement.get("travel_slots")
-        if self.movement_policy == MovementPolicy.TRAVEL_TIME.value:
-            if travel_slots is None:
+        min_buffer_minutes = int(movement.get("min_buffer_minutes", 0))
+        if min_buffer_minutes < 0:
+            raise ValueError("movement.min_buffer_minutes must be a nonnegative integer.")
+
+        if uses_travel_constraints:
+            if self.movement_policy == MovementPolicy.NONOVERLAP_TIME.value:
+                auto_requested = isinstance(travel_slots, str) and travel_slots.lower() == "auto"
+                if travel_slots is not None and not auto_requested:
+                    raise ValueError(
+                        "movement.policy='nonoverlap_time' only supports "
+                        "travel_slots omitted or set to 'auto'."
+                    )
+                travel_slots = compute_min_travel_lags(
+                    self.times_by_building,
+                    min_buffer_minutes=min_buffer_minutes,
+                )
+            elif isinstance(travel_slots, str):
+                if travel_slots.lower() != "auto":
+                    raise ValueError("movement.travel_slots must be a dictionary or 'auto'.")
+                travel_slots = compute_min_travel_lags(
+                    self.times_by_building,
+                    min_buffer_minutes=min_buffer_minutes,
+                )
+            elif travel_slots is None:
                 travel_slots = {b: {bb: (0 if b == bb else 1) for bb in self.buildings} for b in self.buildings}
             self.travel_slots = {}
             for b_from in self.buildings:
@@ -796,6 +885,40 @@ class Scheduler:
                     self.travel_slots[b_from][b_to] = lag
         else:
             self.travel_slots = {b: {bb: 0 for bb in self.buildings} for b in self.buildings}
+            self._warn_if_none_policy_real_time_overlap_risk()
+
+    def _warn_if_none_policy_real_time_overlap_risk(self):
+        """Warn when shifted building clocks can overlap across adjacent slots."""
+        if len(self.buildings) < 2:
+            return
+
+        parsed = {b: [slot2min(slot) for slot in self.times_by_building[b]] for b in self.buildings}
+        risky_pairs = []
+        for b_from in self.buildings:
+            for b_to in self.buildings:
+                if b_from == b_to:
+                    continue
+                has_adjacent_overlap = False
+                for t in range(1, self.number_time_slots):
+                    _, end_from = parsed[b_from][t - 1]
+                    start_to, _ = parsed[b_to][t]
+                    if start_to < end_from:
+                        has_adjacent_overlap = True
+                        break
+                if has_adjacent_overlap:
+                    risky_pairs.append((b_from, b_to))
+
+        if risky_pairs:
+            pair_labels = ", ".join(f"{a}->{b}" for a, b in risky_pairs[:4])
+            if len(risky_pairs) > 4:
+                pair_labels += ", ..."
+            warnings.warn(
+                "movement.policy='none' with shifted building clocks can allow real-time visitor overlaps "
+                f"across adjacent slot indices ({pair_labels}). Use movement.policy='nonoverlap_time' "
+                "or movement.policy='travel_time' with travel_slots='auto' to prevent this.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     def _build_box_colors(self):
         """Return a color map for configured buildings."""
@@ -1303,7 +1426,10 @@ class Scheduler:
         # facutly_too_many_meetings == 1  <=>  faculty f meets more than max_visitors - 2 students
         m.faculty_too_many_meetings = pyo.Var(m.faculty, domain=pyo.Binary)
 
-        if self.movement_policy == MovementPolicy.TRAVEL_TIME.value:
+        if self.movement_policy in {
+            MovementPolicy.TRAVEL_TIME.value,
+            MovementPolicy.NONOVERLAP_TIME.value,
+        }:
             # in_building[s, b, t] == 1  <=>  visitor s is in building b at time t
             m.in_building = pyo.Var(m.visitors, m.buildings, m.time, domain=pyo.Binary)
 
@@ -1382,7 +1508,10 @@ class Scheduler:
             phase = self.building_phase_slot[self.faculty[f]["building"]]
             return m.y[s, f, t] <= (1 if t >= phase else 0)
 
-        if self.movement_policy == MovementPolicy.TRAVEL_TIME.value:
+        if self.movement_policy in {
+            MovementPolicy.TRAVEL_TIME.value,
+            MovementPolicy.NONOVERLAP_TIME.value,
+        }:
             @m.Constraint(m.visitors, m.buildings, m.time)
             def in_building_link(m, s, b, t):
                 return sum(m.y[s, f, t] for f in m.faculty_by_building[b]) <= m.in_building[s, b, t]

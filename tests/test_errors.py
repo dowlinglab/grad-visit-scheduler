@@ -162,6 +162,59 @@ def test_invalid_movement_policy_raises(tmp_path: Path):
         load_run_config(run_yaml)
 
 
+def test_nonoverlap_time_with_explicit_travel_slots_raises(tmp_path: Path):
+    """nonoverlap_time policy should not accept manual travel slot matrices."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:15-1:40']\n"
+        "movement:\n"
+        "  policy: nonoverlap_time\n"
+        "  travel_slots:\n"
+        "    BuildingA:\n"
+        "      BuildingA: 0\n"
+        "      BuildingB: 1\n"
+        "    BuildingB:\n"
+        "      BuildingA: 1\n"
+        "      BuildingB: 0\n"
+    )
+    with pytest.raises(ValueError, match="nonoverlap_time"):
+        load_run_config(run_yaml)
+
+
+def test_travel_time_allows_auto_travel_slots(tmp_path: Path):
+    """travel_time policy should accept travel_slots: auto."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25', '1:30-1:55']\n"
+        "  BuildingB: ['1:15-1:40', '1:45-2:10']\n"
+        "movement:\n"
+        "  policy: travel_time\n"
+        "  travel_slots: auto\n"
+        "  min_buffer_minutes: 5\n"
+    )
+    cfg = load_run_config(run_yaml)
+    assert cfg["movement"]["travel_slots"] == "auto"
+
+
+def test_negative_min_buffer_minutes_raises(tmp_path: Path):
+    """movement.min_buffer_minutes must be nonnegative."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:15-1:40']\n"
+        "movement:\n"
+        "  policy: travel_time\n"
+        "  travel_slots: auto\n"
+        "  min_buffer_minutes: -1\n"
+    )
+    with pytest.raises(ValueError, match="min_buffer_minutes"):
+        load_run_config(run_yaml)
+
+
 def test_invalid_phase_slot_out_of_range_raises(tmp_path: Path):
     """Raise when phase slot is outside configured slot range."""
     run_yaml = tmp_path / "run.yaml"

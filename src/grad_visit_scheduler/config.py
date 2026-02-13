@@ -99,8 +99,10 @@ def load_run_config(path: str | Path) -> Dict[str, Any]:
         if not isinstance(movement, dict):
             raise ValueError("Run config 'movement' must be a dictionary.")
         policy = str(movement.get("policy", "none")).lower()
-        if policy not in {"none", "travel_time"}:
-            raise ValueError("Run config movement.policy must be 'none' or 'travel_time'.")
+        if policy not in {"none", "travel_time", "nonoverlap_time"}:
+            raise ValueError(
+                "Run config movement.policy must be 'none', 'travel_time', or 'nonoverlap_time'."
+            )
         phase_slot = movement.get("phase_slot", {})
         if phase_slot and not isinstance(phase_slot, dict):
             raise ValueError("Run config movement.phase_slot must be a dictionary.")
@@ -111,10 +113,19 @@ def load_run_config(path: str | Path) -> Dict[str, Any]:
             max_slot = next(iter(slot_lengths.values()))
             if v_int < 1 or v_int > max_slot:
                 raise ValueError(f"Run config movement.phase_slot values must be in [1, {max_slot}].")
-        if policy == "travel_time":
+        if "min_buffer_minutes" in movement:
+            buffer_minutes = int(movement["min_buffer_minutes"])
+            if buffer_minutes < 0:
+                raise ValueError("Run config movement.min_buffer_minutes must be nonnegative.")
+        if policy in {"travel_time", "nonoverlap_time"}:
             travel = movement.get("travel_slots")
-            if travel is not None and not isinstance(travel, dict):
-                raise ValueError("Run config movement.travel_slots must be a dictionary.")
+            auto_requested = isinstance(travel, str) and travel.lower() == "auto"
+            if travel is not None and not (isinstance(travel, dict) or auto_requested):
+                raise ValueError("Run config movement.travel_slots must be a dictionary or 'auto'.")
+            if policy == "nonoverlap_time" and travel is not None and not auto_requested:
+                raise ValueError(
+                    "Run config movement.policy='nonoverlap_time' only supports travel_slots omitted or 'auto'."
+                )
     return data
 
 

@@ -7,6 +7,7 @@ from .core import (
     FacultyStatus,
     SolutionResult,
     SolutionSet,
+    compute_min_travel_lags,
 )
 from .config import (
     load_faculty_catalog,
@@ -24,6 +25,7 @@ __all__ = [
     "FacultyStatus",
     "SolutionResult",
     "SolutionSet",
+    "compute_min_travel_lags",
     "load_faculty_catalog",
     "load_run_config",
     "build_times_by_building",

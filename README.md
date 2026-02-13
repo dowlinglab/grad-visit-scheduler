@@ -119,7 +119,14 @@ The run config now supports one, two, or many buildings. `building_order` contro
 
 - `movement.policy: none`: close-proximity buildings; no explicit travel-time constraints.
 - `movement.policy: travel_time`: explicit inter-building travel-time lag constraints.
+- `movement.policy: nonoverlap_time`: auto-derive inter-building lag constraints from absolute slot timestamps.
 - `movement.phase_slot`: earliest slot allowed by building (for staggered starts like Building A first vs Building B first).
+- `movement.travel_slots: auto`: auto-derive lag matrix under `travel_time` for shifted/nonuniform clocks.
+
+Important shifted-clock note: if buildings have offset time grids, `policy: none`
+can allow real-time overlaps across adjacent slot indices. Prefer
+`policy: nonoverlap_time` (or `policy: travel_time` with `travel_slots: auto`)
+for those schedules.
 
 Legacy `Mode.*` options are still available with `FutureWarning`.
 
