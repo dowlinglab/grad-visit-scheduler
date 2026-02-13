@@ -44,6 +44,8 @@ def _solve_case(label: str, faculty_file: str, run_file: str, run_name: str):
             "num_group_slots": None,
         }
     sol = s._current_solution_result()
+    sol.plot_visitor_schedule(save_files=True, show_solution_rank=False)
+    sol.plot_faculty_schedule(save_files=True, show_solution_rank=False)
     row = sol.summary_row(best_objective=sol.objective_value)
     return {
         "scenario": label,

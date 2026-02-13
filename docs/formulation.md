@@ -257,6 +257,8 @@ $$
 - The model is assembled in `Scheduler._build_model` and solved in `Scheduler._solve_model`.
 - Feasibility checks and diagnostics are available through `has_feasible_solution` and `infeasibility_report`.
 - Constraint activation depends on movement policy and `enforce_breaks` exactly as documented above.
+- Legacy mode-specific movement constraints are superseded by the
+  `movement.phase_slot` and `movement.travel_slots` formulation above.
 
 ## Example Solutions
 

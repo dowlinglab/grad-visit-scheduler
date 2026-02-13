@@ -175,4 +175,5 @@ python scripts/run_shifted_start_comparison.py
 ```
 
 For full movement-policy details (one/two/three-building cases and travel-time
-constraints), see [Building Movement and Staggered Starts](movement.md).
+constraints), plus visual example outputs and result tables, see
+[Building Movement and Staggered Starts](movement.md).
