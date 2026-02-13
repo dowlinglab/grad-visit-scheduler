@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import matplotlib
+import matplotlib.pyplot as plt
 import pytest
 import pyomo.environ as pyo
 from pyomo.common.errors import ApplicationError
@@ -112,6 +113,7 @@ def test_current_solution_result_raises_before_solve(tmp_path: Path):
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
 def test_solution_result_single_solution_api(tmp_path: Path):
     """SolutionResult should support summary, plotting, and DOCX export."""
+    pytest.importorskip("docx")
     s = _build_solved_scheduler()
     top = s.schedule_visitors_top_n(
         n_solutions=2,
@@ -130,6 +132,8 @@ def test_solution_result_single_solution_api(tmp_path: Path):
     row = sol.summary_row(best_objective=sol.objective_value)
     assert row["rank"] == 1
     assert row["objective_gap_from_best"] == 0.0
+    assert row["num_assignments"] == len(sol.active_meetings)
+    assert row["num_visitors_scheduled"] >= 1
 
     any_meeting = next(iter(sol.active_meetings))
     assert sol.meeting_assigned(*any_meeting)
@@ -137,6 +141,14 @@ def test_solution_result_single_solution_api(tmp_path: Path):
     cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
+        sol.plot_visitor_schedule(save_files=False, show_solution_rank=True)
+        visitor_title = plt.gcf().axes[0].get_title()
+        assert "Solution Rank 1" in visitor_title
+
+        sol.plot_faculty_schedule(save_files=False, show_solution_rank=False)
+        faculty_title = plt.gcf().axes[0].get_title()
+        assert "Solution Rank" not in faculty_title
+
         visitor_paths = sol.plot_visitor_schedule(save_files=True, show_solution_rank=True)
         faculty_paths = sol.plot_faculty_schedule(save_files=True, show_solution_rank=True)
         docx_path = sol.export_visitor_docx("single_solution.docx")
@@ -145,14 +157,24 @@ def test_solution_result_single_solution_api(tmp_path: Path):
 
     assert visitor_paths is not None
     assert faculty_paths is not None
-    assert (tmp_path / visitor_paths[0]).exists()
-    assert (tmp_path / faculty_paths[0]).exists()
-    assert (tmp_path / docx_path.name).exists()
+    visitor_png = tmp_path / visitor_paths[0]
+    faculty_png = tmp_path / faculty_paths[0]
+    docx_file = tmp_path / docx_path.name
+    assert visitor_png.exists() and visitor_png.stat().st_size > 0
+    assert faculty_png.exists() and faculty_png.stat().st_size > 0
+    assert docx_file.exists() and docx_file.stat().st_size > 0
+
+    from docx import Document
+
+    document = Document(str(docx_file))
+    assert len(document.tables) == len(sol.visitors)
+    assert len(document.tables[0].rows) == len(sol.time_slots)
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
 def test_solution_set_summarize_options(tmp_path: Path):
     """Summarize helper should handle optional arguments and docx export."""
+    pytest.importorskip("docx")
     s = _build_solved_scheduler()
     top = s.schedule_visitors_top_n(
         n_solutions=2,
@@ -184,13 +206,18 @@ def test_solution_set_summarize_options(tmp_path: Path):
     assert report["visitor_plot_files"] == ()
     assert report["faculty_plot_files"] == ()
     assert len(report["docx_files"]) == len(top)
+    assert report["summary"].shape[0] == len(top)
+    assert report["summary"]["rank"].tolist() == list(range(1, len(top) + 1))
     for p in report["docx_files"]:
-        assert (tmp_path / Path(p).name).exists()
+        docx_path = tmp_path / Path(p).name
+        assert docx_path.exists()
+        assert docx_path.stat().st_size > 0
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
 def test_scheduler_legacy_wrappers_emit_futurewarning(tmp_path: Path):
     """Legacy scheduler wrappers should warn and still execute."""
+    pytest.importorskip("docx")
     s = _build_solved_scheduler()
 
     cwd = Path.cwd()
@@ -211,6 +238,7 @@ def test_scheduler_legacy_wrappers_emit_futurewarning(tmp_path: Path):
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
 def test_top_level_export_helper_emits_futurewarning(tmp_path: Path):
     """Top-level export helper should warn and export a DOCX file."""
+    pytest.importorskip("docx")
     s = _build_solved_scheduler()
 
     cwd = Path.cwd()
@@ -231,10 +259,15 @@ def test_show_utility_and_plot_preferences():
     fig1, ax1 = s.plot_preferences()
     assert fig1 is not None
     assert ax1 is not None
+    assert ax1.get_xlabel() == "Faculty"
+    assert ax1.get_ylabel() == "Prospective Graduate Students"
+    assert "Interview Preferences" in ax1.get_title()
 
     fig2, ax2 = s.show_utility()
     assert fig2 is not None
     assert ax2 is not None
+    assert "Total Utility =" in ax2.get_title()
+    assert len(ax2.collections) >= 1
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
@@ -243,7 +276,14 @@ def test_check_requests_runs(capsys):
     s = _build_solved_scheduler()
     s.check_requests()
     captured = capsys.readouterr()
-    assert "visitors with" in captured.out
+    lines = [line.strip() for line in captured.out.splitlines() if line.strip()]
+    meeting_lines = [line for line in lines if "visitors with" in line]
+    assert meeting_lines
+    total_visitors_reported = 0
+    for line in meeting_lines:
+        parts = line.split()
+        total_visitors_reported += int(parts[0])
+    assert total_visitors_reported == len(s.student_data.index)
 
 
 def test_top_n_invalid_n_raises(tmp_path: Path):

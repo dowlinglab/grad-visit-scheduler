@@ -26,6 +26,19 @@ def test_build_times_by_building_includes_breaks():
     assert times["breaks"] == [1]
 
 
+def test_build_times_by_building_respects_building_order():
+    """Configured building_order should control output ordering."""
+    run_cfg = {
+        "buildings": {
+            "BuildingA": ["1:00-1:25"],
+            "BuildingB": ["1:00-1:25"],
+        },
+        "building_order": ["BuildingB", "BuildingA"],
+    }
+    times = build_times_by_building(run_cfg)
+    assert list(times.keys()) == ["BuildingB", "BuildingA"]
+
+
 def test_aliases_applied_in_preferences(tmp_path: Path):
     """Ensure faculty aliases are applied while loading visitor requests."""
     csv_path = tmp_path / "visitors.csv"
@@ -99,6 +112,8 @@ def test_external_faculty_added_from_preferences(tmp_path: Path):
 
     assert "External X" in s.faculty
     assert s.faculty["External X"]["avail"] == []
+    assert s.faculty["External X"]["building"] == "BuildingA"
+    assert "External X" in s.requests["Visitor 1"]
 
 
 def test_faculty_limited_availability_validation(tmp_path: Path):
