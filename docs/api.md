@@ -29,6 +29,10 @@ Top-level imports provided by `grad_visit_scheduler`:
 - Optional ranked plot generation
 - Optional ranked DOCX export
 
+For the mathematical no-good-cut constraint that enforces uniqueness between
+ranked solutions, see
+[Mathematical Formulation: Top-N No-Good Cuts](formulation.md#top-n-no-good-cuts).
+
 Internal review pattern (keep rank labels visible in plot titles):
 
 ```python

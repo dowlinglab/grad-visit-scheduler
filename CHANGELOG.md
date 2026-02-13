@@ -6,6 +6,15 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-13
+
+### Added
+- Release checklist quick reference table in `docs/releasing.md` for streamlined release workflows.
+
+### Changed
+- Clarified Top-N workflow usage in `docs/quickstart.md` with reference to modern `SolutionSet`/`SolutionResult` interface.
+- Enhanced `docs/releasing.md` with additional troubleshooting for tag-related release workflow issues.
+
 ## [0.2.0] - 2026-02-13
 
 ### Added
