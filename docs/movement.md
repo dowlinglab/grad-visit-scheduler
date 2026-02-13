@@ -40,6 +40,22 @@ movement:
 - `travel_slots: auto`: available with `policy: travel_time`; computes lag matrix from timestamps.
 - `min_buffer_minutes`: optional extra buffer applied to auto-computed lag transitions.
 
+## Policy Selection Guide
+
+Use this quick guide to pick the right movement policy:
+
+| Scenario | Recommended policy | Why |
+| --- | --- | --- |
+| One building | `none` | No inter-building movement exists. |
+| Multiple buildings with identical/non-overlapping clock grids and no travel modeling needed | `none` | Simplest model, fastest solve. |
+| Shifted or nonuniform building clocks where real-time overlap must be prevented | `nonoverlap_time` | Auto-derives safe lag matrix from absolute times. |
+| Need explicit/manual travel lags (domain-specific travel assumptions) | `travel_time` + manual `travel_slots` | Full user control over pairwise lag policy. |
+| Want travel-time formulation but avoid hand-building lag matrix | `travel_time` + `travel_slots: auto` | Same automatic lag derivation as `nonoverlap_time`. |
+
+Practical recommendation:
+- Start with `nonoverlap_time` for shifted-clock schedules.
+- Move to manual `travel_time` only when you have a deliberate reason to override derived lags.
+
 ## Shifted Clock Safety
 
 If buildings use shifted/nonuniform clock grids (for example `1:00-1:25` in one

@@ -20,7 +20,7 @@ This table maps the mathematical symbols to the exact Pyomo components in the co
 | $y_{sft}$ | `m.y[s, f, t]` | Meeting assignment decision variable |
 | $z_{ft}$ | `m.beyond_one_visitor[f, t]` | Visitors beyond one in a meeting |
 | $q_f$ | `m.faculty_too_many_meetings[f]` | Overload indicator |
-| $\beta_{skt}$ | `m.in_building[s, k, t]` | Visitor in building $k$ at slot $t$ (travel policy only) |
+| $\beta_{skt}$ | `m.in_building[s, k, t]` | Visitor in building $k$ at slot $t$ (travel policies) |
 | $r_{ft}$ | `m.faculty_breaks[f, t]` | Faculty break indicator |
 
 ## Worked Example Dataset
@@ -92,7 +92,7 @@ Faculty availability conflicts in this example:
 - $y_{sft} \in \{0,1\}$: 1 if visitor $s$ meets faculty $f$ at time $t$
 - $z_{ft} \ge 0$: number of visitors beyond one in faculty-time meeting $(f,t)$
 - $q_f \in \{0,1\}$: overload indicator for faculty $f$
-- $\beta_{skt} \in \{0,1\}$: visitor $s$ is in building $k$ at slot $t$ (only when `movement.policy = travel_time`)
+- $\beta_{skt} \in \{0,1\}$: visitor $s$ is in building $k$ at slot $t$ (when `movement.policy` is `travel_time` or `nonoverlap_time`)
 - $r_{ft} \in \{0,1\}$: faculty $f$ is on break at candidate break slot $t \in \mathcal{B}$
 
 ## Objective
@@ -196,7 +196,7 @@ $$
 This supports staggered schedules such as "Building A first" or "Building B first"
 without requiring a dedicated mode.
 
-### 10. Travel-time occupancy and lag constraints (`movement.policy = travel_time`)
+### 10. Travel-time occupancy and lag constraints (`movement.policy = travel_time` or `nonoverlap_time`)
 
 When travel-time constraints are enabled, occupancy indicators are linked by:
 
@@ -212,6 +212,10 @@ $$
 \beta_{sk t_1} + \beta_{s\ell t_2} \le 1,
 \quad \forall s,\; k \ne \ell,\; 0 < t_2-t_1 \le \tau_{k\ell}
 $$
+
+When `travel_slots: auto` or `policy: nonoverlap_time` is used, $\tau_{k\ell}$
+is derived from absolute slot timestamps so overlapping real-time transitions
+are disallowed (optionally with additional `min_buffer_minutes`).
 
 ### 11. Visitor break requirement
 

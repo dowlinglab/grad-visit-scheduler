@@ -87,10 +87,22 @@ def slot2min(slot):
     tuple[int, int]
         Start and end times in minutes.
     """
-    start, stop = slot.split("-")
-    a, b = start.split(":")
-    c, d = stop.split(":")
-    return 60*int(a) + int(b), 60*int(c) + int(d)
+    if not isinstance(slot, str):
+        raise ValueError("Slot label must be a string in 'H:MM-H:MM' format.")
+
+    m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*", slot)
+    if m is None:
+        raise ValueError(f"Invalid slot label '{slot}'. Expected 'H:MM-H:MM'.")
+
+    a, b, c, d = (int(m.group(i)) for i in range(1, 5))
+    if not (0 <= b < 60 and 0 <= d < 60):
+        raise ValueError(f"Invalid slot label '{slot}'. Minutes must be in [00, 59].")
+
+    start = 60 * a + b
+    stop = 60 * c + d
+    if stop <= start:
+        raise ValueError(f"Invalid slot label '{slot}'. End time must be after start time.")
+    return start, stop
 
 
 def _normalize_building_times(times_by_building):

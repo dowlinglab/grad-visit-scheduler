@@ -185,3 +185,7 @@ python scripts/run_shifted_start_comparison.py
 For full movement-policy details (one/two/three-building cases and travel-time
 constraints), plus visual example outputs and result tables, see
 [Building Movement and Staggered Starts](movement.md).
+
+For shifted-clock schedules where you want automatic overlap protection, see:
+
+- `examples/config_shifted_nonoverlap_auto.yaml`

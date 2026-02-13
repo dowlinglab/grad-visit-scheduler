@@ -34,6 +34,16 @@ def _has_real_time_overlap(solution):
     return False
 
 
+def _build_slots(start_minute: int, duration: int, step: int, n_slots: int = 4):
+    """Build deterministic slot labels from minute offsets."""
+    slots = []
+    for i in range(n_slots):
+        start = start_minute + i * step
+        end = start + duration
+        slots.append(f"{start // 60}:{start % 60:02d}-{end // 60}:{end % 60:02d}")
+    return slots
+
+
 def test_compute_min_travel_lags_protects_all_overlapping_forward_transitions():
     """Any overlapping i->j cross-building transition should be blocked by derived lag."""
     times = {
@@ -56,6 +66,33 @@ def test_compute_min_travel_lags_protects_all_overlapping_forward_transitions():
                     overlaps = start_to < end_from
                     if overlaps:
                         assert (j - i) <= lag
+
+
+def test_compute_min_travel_lags_matrix_sweep_sufficiency():
+    """Deterministic sweep over offsets/durations should always satisfy overlap blocking."""
+    for offset_b in (0, 5, 10, 15, 20):
+        for dur_a in (20, 25, 30):
+            for dur_b in (20, 25, 30):
+                for step_a in (25, 30):
+                    for step_b in (25, 30):
+                        times = {
+                            "A": _build_slots(60, dur_a, step_a, n_slots=4),
+                            "B": _build_slots(60 + offset_b, dur_b, step_b, n_slots=4),
+                        }
+                        lags = compute_min_travel_lags(times, min_buffer_minutes=0)
+                        parsed = _parse_times(times)
+                        for i, (_, end_from) in enumerate(parsed["A"], start=1):
+                            for j, (start_to, _) in enumerate(parsed["B"], start=1):
+                                if j <= i:
+                                    continue
+                                if start_to < end_from:
+                                    assert (j - i) <= lags["A"]["B"]
+                        for i, (_, end_from) in enumerate(parsed["B"], start=1):
+                            for j, (start_to, _) in enumerate(parsed["A"], start=1):
+                                if j <= i:
+                                    continue
+                                if start_to < end_from:
+                                    assert (j - i) <= lags["B"]["A"]
 
 
 def test_compute_min_travel_lags_is_minimal_when_positive():
@@ -99,6 +136,25 @@ def test_compute_min_travel_lags_min_buffer_is_monotone():
     for b_from in times:
         for b_to in times:
             assert lag10[b_from][b_to] >= lag0[b_from][b_to]
+
+
+def test_compute_min_travel_lags_three_building_mixed_offsets_matrix():
+    """Three-building mixed-offset deterministic sweep should produce valid lag matrices."""
+    for offset_b in (0, 10, 20):
+        for offset_c in (5, 15, 25):
+            times = {
+                "A": _build_slots(60, 25, 30, n_slots=4),
+                "B": _build_slots(60 + offset_b, 25, 30, n_slots=4),
+                "C": _build_slots(60 + offset_c, 25, 30, n_slots=4),
+            }
+            lags = compute_min_travel_lags(times, min_buffer_minutes=0)
+            assert set(lags.keys()) == {"A", "B", "C"}
+            for b_from in ("A", "B", "C"):
+                for b_to in ("A", "B", "C"):
+                    assert isinstance(lags[b_from][b_to], int)
+                    assert lags[b_from][b_to] >= 0
+                    if b_from == b_to:
+                        assert lags[b_from][b_to] == 0
 
 
 def test_nonoverlap_policy_matches_travel_time_auto_lag_matrix(tmp_path: Path):
