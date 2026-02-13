@@ -727,7 +727,7 @@ class Scheduler:
 
         self.require_break_constraints_default = False
         use_legacy_mode = bool(mode is not None and not movement)
-        if use_legacy_mode and mode is not Mode.NO_OFFSET:
+        if use_legacy_mode:
             warnings.warn(
                 "Scheduler(mode=...) is a legacy interface. Prefer movement "
                 "configuration via run config or Scheduler(..., movement=...).",

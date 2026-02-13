@@ -6,6 +6,32 @@ This project follows a simple Keep a Changelog style and uses semantic versionin
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-13
+
+### Added
+- New generalized building movement interface via run-config `movement`:
+  - `movement.policy` (`none` or `travel_time`),
+  - `movement.phase_slot` for per-building staggered starts,
+  - `movement.travel_slots` for pairwise inter-building lag constraints.
+- Support for one-building and 3+ building close-proximity schedules (no hard two-building requirement).
+- New movement-focused docs page: `docs/movement.md`, with executable examples, result tables, and schedule visuals.
+- New comparison script for generalized building configurations:
+  - `scripts/run_building_configuration_examples.py`.
+- New/expanded movement example configs and catalogs in `examples/`.
+
+### Changed
+- `Scheduler` now treats movement config as the preferred interface; legacy `Mode` is compatibility-only.
+- Mathematical formulation docs updated to reflect generalized movement model:
+  - building phase constraints,
+  - travel-time occupancy/lag constraints,
+  - explicit Top-N no-good-cut equation section.
+- Quickstart/API docs now cross-reference movement usage and updated model sections.
+- Building-configuration examples now use the larger formulation dataset to better expose edge cases while remaining fast to solve.
+
+### Deprecated
+- Explicit legacy `mode=...` scheduling interface now emits `FutureWarning` for all modes (`BUILDING_A_FIRST`, `BUILDING_B_FIRST`, and `NO_OFFSET`).
+- Passing both `mode` and `movement` emits `FutureWarning` and ignores `mode`.
+
 ## [0.2.1] - 2026-02-13
 
 ### Added

@@ -252,33 +252,23 @@ y_{sft} = 0
 \quad \forall (s,t) \text{ not available to visitor } s,\; \forall f
 $$
 
-## Top-N No-Good Cuts
+### 14. Top-N No-Good Cuts
 
-When `schedule_visitors_top_n(...)` is used, the model is re-solved multiple
-times. After each feasible solution, a no-good cut is added so the next solve
-must differ in at least one binary assignment.
+When generating ranked alternatives, the model adds one no-good cut after each
+feasible solution to exclude the exact same binary assignment vector in later
+iterations.
 
-Let $\bar{y}_{sft} \in \{0,1\}$ be the assignment from the previously found
-solution. Define:
-
-- $\mathcal{A} = \{(s,f,t) : \bar{y}_{sft} = 1\}$ (active assignments)
-- $\mathcal{I} = \{(s,f,t) : \bar{y}_{sft} = 0\}$ (inactive assignments)
-
-The no-good cut is:
+Let $\mathcal{I}$ be all assignment indices $(s,f,t)$ and let
+$\mathcal{A}^{(k)} \subseteq \mathcal{I}$ be the active assignment set in
+rank-$k$ solution. The no-good cut for solution $k$ is:
 
 $$
-\sum_{(s,f,t)\in\mathcal{A}} (1 - y_{sft})
-\;+\;
-\sum_{(s,f,t)\in\mathcal{I}} y_{sft}
-\;\ge\; 1
+\sum_{i \in \mathcal{A}^{(k)}} \left(1 - y_i\right)
++ \sum_{i \in \mathcal{I}\setminus \mathcal{A}^{(k)}} y_i
+\ge 1
 $$
 
-Interpretation:
-
-- If the new solution exactly matches the previous one, every term is zero,
-  violating the cut.
-- Therefore, at least one assignment must flip, guaranteeing a distinct
-  schedule.
+This enforces that at least one binary variable differs from solution $k$.
 
 ## Notes on Implementation
 

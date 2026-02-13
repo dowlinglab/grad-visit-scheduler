@@ -293,3 +293,63 @@ def test_no_offset_without_breaks_raises(tmp_path: Path):
             tee=False,
             run_name="no_breaks",
         )
+
+
+def test_legacy_mode_no_offset_emits_futurewarning(tmp_path: Path):
+    """Explicit use of legacy mode should emit FutureWarning."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    with pytest.warns(FutureWarning, match="legacy interface"):
+        Scheduler(
+            times_by_building=times_by_building,
+            student_data_filename=str(csv_path),
+            mode=Mode.NO_OFFSET,
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+
+def test_mode_and_movement_together_emits_futurewarning(tmp_path: Path):
+    """Providing both legacy mode and movement should warn and use movement."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    with pytest.warns(FutureWarning, match="Ignoring `mode` and using `movement`"):
+        s = Scheduler(
+            times_by_building=times_by_building,
+            student_data_filename=str(csv_path),
+            mode=Mode.BUILDING_A_FIRST,
+            movement={"policy": "none", "phase_slot": {"BuildingA": 1, "BuildingB": 1}},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+    assert s.movement_policy == "none"

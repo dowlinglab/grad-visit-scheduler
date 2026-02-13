@@ -35,7 +35,7 @@ Preferred interface note: use run-config `movement:` settings and
 
 For the mathematical no-good-cut constraint that enforces uniqueness between
 ranked solutions, see
-[Mathematical Formulation: Top-N No-Good Cuts](formulation.md#top-n-no-good-cuts).
+[Mathematical Formulation](formulation.md) ("Top-N No-Good Cuts" section).
 
 Internal review pattern (keep rank labels visible in plot titles):
 
