@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
+import os
 from math import isnan
 import re
 from enum import Enum
@@ -1363,7 +1364,19 @@ class Scheduler:
         elif self.solver is Solver.GUROBI_IIS:
             
             # Reference: https://github.com/Pyomo/pyomo/blob/main/examples/pyomo/suffixes/gurobi_ampl_iis.py
-            opt = pyo.SolverFactory('./ampl/gurobi_ampl', solver_io = 'nl')
+            iis_exe = os.environ.get("GVS_GUROBI_IIS_EXECUTABLE", "./ampl/gurobi_ampl")
+            iis_exe_path = Path(iis_exe)
+            if not iis_exe_path.exists():
+                raise RuntimeError(
+                    f"GUROBI_IIS executable not found at '{iis_exe_path}'. "
+                    "Set environment variable GVS_GUROBI_IIS_EXECUTABLE to the executable path."
+                )
+            opt = pyo.SolverFactory(str(iis_exe_path), solver_io='nl')
+            if not opt.available(exception_flag=False):
+                raise RuntimeError(
+                    f"GUROBI_IIS solver is not available via '{iis_exe_path}'. "
+                    "Check executable permissions and Gurobi/AMPL setup."
+                )
             
             # tell gurobi to be verbose with output
             opt.options['outlev'] = 1

@@ -153,3 +153,42 @@ def test_invalid_faculty_building_raises(tmp_path: Path):
             mode=Mode.NO_OFFSET,
             solver=Solver.HIGHS,
         )
+
+
+def test_gurobi_iis_missing_executable_raises(tmp_path: Path, monkeypatch):
+    """Raise with a clear message when GUROBI_IIS executable path is invalid."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+
+    times_by_building = {"BuildingA": ["1:00-1:25"], "BuildingB": ["1:00-1:25"]}
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    s = Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_A_FIRST,
+        solver=Solver.GUROBI_IIS,
+        faculty_catalog=faculty_catalog,
+    )
+    monkeypatch.setenv("GVS_GUROBI_IIS_EXECUTABLE", str(tmp_path / "missing_gurobi_ampl"))
+
+    with pytest.raises(RuntimeError, match="GUROBI_IIS executable not found"):
+        s.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=1,
+            min_faculty=1,
+            max_group=1,
+            enforce_breaks=False,
+            tee=False,
+            run_name="test_iis_missing",
+        )

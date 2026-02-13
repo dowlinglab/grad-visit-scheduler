@@ -19,6 +19,18 @@ def _solver_available(name: str) -> bool:
         return False
 
 
+def _gurobi_iis_available() -> bool:
+    """Return whether GUROBI_IIS backend is available with configured executable."""
+    exe = os.environ.get("GVS_GUROBI_IIS_EXECUTABLE", "ampl/gurobi_ampl")
+    exe_path = Path(exe)
+    if not exe_path.exists():
+        return False
+    try:
+        return pyo.SolverFactory(str(exe_path), solver_io="nl").available(exception_flag=False)
+    except Exception:
+        return False
+
+
 @pytest.mark.parametrize(
     ("solver_enum", "solver_name"),
     [
@@ -146,3 +158,30 @@ def test_solver_top_n_summary_helper_highs(tmp_path: Path):
         assert (tmp_path / rel).exists()
     for rel in report["faculty_plot_files"]:
         assert (tmp_path / rel).exists()
+
+
+def test_solver_gurobi_iis_infeasible_path():
+    """Run GUROBI_IIS on an infeasible toy case when executable is available."""
+    if not _gurobi_iis_available():
+        pytest.skip("GUROBI_IIS executable/backend is not available")
+
+    root = Path(__file__).parents[1]
+    s = scheduler_from_configs(
+        root / "examples" / "faculty_example.yaml",
+        root / "examples" / "config_basic.yaml",
+        root / "examples" / "data_fake_visitors.csv",
+        mode=Mode.NO_OFFSET,
+        solver=Solver.GUROBI_IIS,
+    )
+    s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=20,
+        max_visitors=20,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=True,
+        tee=False,
+        run_name="test_iis",
+    )
+    assert hasattr(s.model, "iis")
+    assert not s.has_feasible_solution()
