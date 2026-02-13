@@ -106,12 +106,46 @@ def test_alias_target_missing_raises(tmp_path: Path):
         load_faculty_catalog(faculty_yaml)
 
 
+def test_empty_faculty_catalog_raises(tmp_path: Path):
+    """Raise when faculty catalog is missing or has empty faculty section."""
+    faculty_yaml = tmp_path / "faculty.yaml"
+    faculty_yaml.write_text("faculty: {}\n")
+    with pytest.raises(ValueError, match="missing 'faculty' section"):
+        load_faculty_catalog(faculty_yaml)
+
+
 def test_missing_buildings_in_run_config_raises(tmp_path: Path):
     """Raise when run config omits the ``buildings`` section."""
     run_yaml = tmp_path / "run.yaml"
     run_yaml.write_text("breaks: [1]\n")
 
     with pytest.raises(ValueError, match="buildings"):
+        load_run_config(run_yaml)
+
+
+def test_invalid_building_order_shape_raises(tmp_path: Path):
+    """Raise when building_order is not a list of exactly two names."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:00-1:25']\n"
+        "building_order: ['BuildingA']\n"
+    )
+    with pytest.raises(ValueError, match="exactly two"):
+        load_run_config(run_yaml)
+
+
+def test_invalid_building_order_missing_entries_raises(tmp_path: Path):
+    """Raise when building_order references unknown building names."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:00-1:25']\n"
+        "building_order: ['BuildingA', 'BuildingC']\n"
+    )
+    with pytest.raises(ValueError, match="entries not found"):
         load_run_config(run_yaml)
 
 
@@ -191,4 +225,43 @@ def test_gurobi_iis_missing_executable_raises(tmp_path: Path, monkeypatch):
             enforce_breaks=False,
             tee=False,
             run_name="test_iis_missing",
+        )
+
+
+def test_no_offset_without_breaks_raises(tmp_path: Path):
+    """NO_OFFSET mode should require configured break times when building model."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}],
+    )
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingA",
+            "room": "101",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    s = Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        mode=Mode.NO_OFFSET,
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+    with pytest.raises(ValueError, match="Must specify some break times"):
+        s.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=1,
+            min_faculty=1,
+            max_group=1,
+            enforce_breaks=False,
+            tee=False,
+            run_name="no_breaks",
         )

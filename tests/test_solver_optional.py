@@ -8,6 +8,7 @@ import pyomo.environ as pyo
 from pyomo.common.errors import ApplicationError
 
 from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
+from pyomo.opt import TerminationCondition
 
 
 def _solver_available(name: str) -> bool:
@@ -113,6 +114,8 @@ def test_solver_solve_basic(solver_enum, solver_name):
         run_name="test",
     )
     assert s.has_feasible_solution()
+    assert s.last_solution_set is None
+    assert s.last_termination_condition in {TerminationCondition.optimal, TerminationCondition.feasible}
 
 
 def test_solver_top_n_unique_highs():

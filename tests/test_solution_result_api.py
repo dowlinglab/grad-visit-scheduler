@@ -250,16 +250,18 @@ def test_scheduler_legacy_wrappers_emit_futurewarning(tmp_path: Path):
     cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
-        with pytest.warns(FutureWarning):
+        with pytest.warns(FutureWarning, match="legacy interface"):
             s.show_faculty_schedule(save_files=False)
-        with pytest.warns(FutureWarning):
+        with pytest.warns(FutureWarning, match="legacy interface"):
             s.show_visitor_schedule(save_files=False)
-        with pytest.warns(FutureWarning):
+        with pytest.warns(FutureWarning, match="legacy interface"):
             out = s.export_visitor_docx("legacy.docx")
     finally:
         os.chdir(cwd)
 
-    assert (tmp_path / out.name).exists()
+    legacy_docx = tmp_path / out.name
+    assert legacy_docx.exists()
+    assert legacy_docx.stat().st_size > 0
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
@@ -271,12 +273,14 @@ def test_top_level_export_helper_emits_futurewarning(tmp_path: Path):
     cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
-        with pytest.warns(FutureWarning):
+        with pytest.warns(FutureWarning, match="legacy helper"):
             out = export_visitor_docx(s, "top_level.docx")
     finally:
         os.chdir(cwd)
 
-    assert (tmp_path / out.name).exists()
+    top_docx = tmp_path / out.name
+    assert top_docx.exists()
+    assert top_docx.stat().st_size > 0
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
@@ -313,11 +317,68 @@ def test_check_requests_runs(capsys):
     assert total_visitors_reported == len(s.student_data.index)
 
 
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_check_requests_raises_when_infeasible(tmp_path: Path):
+    """check_requests should raise RuntimeError on infeasible solve states."""
+    s = _build_tiny_scheduler(tmp_path)
+    s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=2,
+        max_visitors=2,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="infeasible_for_requests",
+    )
+    assert not s.has_feasible_solution()
+    with pytest.raises(RuntimeError, match="Termination:"):
+        s.check_requests()
+
+
 def test_top_n_invalid_n_raises(tmp_path: Path):
     """Top-N solve should reject n_solutions < 1."""
     s = _build_tiny_scheduler(tmp_path)
     with pytest.raises(ValueError, match="at least 1"):
         s.schedule_visitors_top_n(n_solutions=0)
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_building_b_first_mode_builds_and_solves(tmp_path: Path):
+    """BUILDING_B_FIRST branch should be exercised and remain solvable."""
+    csv_path = tmp_path / "visitors_mode_b.csv"
+    csv_path.write_text("Name,Prof1,Area1,Area2\nVisitor 1,Faculty A,Area1,Area1\n", encoding="utf-8")
+    times_by_building = {
+        "BuildingA": ["1:00-1:25", "1:30-1:55"],
+        "BuildingB": ["1:00-1:25", "1:30-1:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "BuildingB",
+            "room": "201",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    s = Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_B_FIRST,
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+    top = s.schedule_visitors_top_n(
+        n_solutions=2,
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=2,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="mode_b_first",
+    )
+    assert len(top) >= 1
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")

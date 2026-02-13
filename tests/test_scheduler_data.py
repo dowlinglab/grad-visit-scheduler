@@ -151,3 +151,89 @@ def test_faculty_limited_availability_validation(tmp_path: Path):
 
     with pytest.raises(ValueError):
         s.faculty_limited_availability("Faculty A", [2])
+
+
+def test_update_weights_scalar_inputs(tmp_path: Path):
+    """Scalar faculty/area weights should broadcast across known fields."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}],
+    )
+    s = Scheduler(
+        times_by_building={"BuildingA": ["1:00-1:25"], "BuildingB": ["1:00-1:25"]},
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_A_FIRST,
+        solver=Solver.HIGHS,
+        faculty_catalog={
+            "Faculty A": {
+                "building": "BuildingA",
+                "room": "101",
+                "areas": ["Area1", "Area2"],
+                "status": "active",
+            }
+        },
+    )
+    s.update_weights(faculty_weight=2.0, area_weight=0.5, base_weight=0.1)
+    assert set(s.faculty_weights.keys()) == set(s.faculty_fields)
+    assert all(v == 2.0 for v in s.faculty_weights.values())
+    assert set(s.area_weights.keys()) == set(s.area_fields)
+    assert all(v == 0.5 for v in s.area_weights.values())
+
+
+def test_update_weights_invalid_types_raise(tmp_path: Path):
+    """Invalid types for faculty/area weights should raise ValueError."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}],
+    )
+    s = Scheduler(
+        times_by_building={"BuildingA": ["1:00-1:25"], "BuildingB": ["1:00-1:25"]},
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_A_FIRST,
+        solver=Solver.HIGHS,
+        faculty_catalog={
+            "Faculty A": {
+                "building": "BuildingA",
+                "room": "101",
+                "areas": ["Area1", "Area2"],
+                "status": "active",
+            }
+        },
+    )
+    with pytest.raises(ValueError, match="faculty_weight"):
+        s.update_weights(faculty_weight=["bad"])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="area_weight"):
+        s.update_weights(area_weight=["bad"])  # type: ignore[arg-type]
+
+
+def test_include_all_legacy_faculty_from_catalog(tmp_path: Path):
+    """include_legacy_faculty=True should merge all legacy entries into faculty."""
+    csv_path = tmp_path / "visitors.csv"
+    _write_csv(
+        csv_path,
+        [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}],
+    )
+    s = Scheduler(
+        times_by_building={"BuildingA": ["1:00-1:25"], "BuildingB": ["1:00-1:25"]},
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_A_FIRST,
+        solver=Solver.HIGHS,
+        include_legacy_faculty=True,
+        faculty_catalog={
+            "Faculty A": {
+                "building": "BuildingA",
+                "room": "101",
+                "areas": ["Area1"],
+                "status": "active",
+            },
+            "Legacy L": {
+                "building": "BuildingB",
+                "room": "201",
+                "areas": ["Area2"],
+                "status": "legacy",
+            },
+        },
+    )
+    assert "Legacy L" in s.faculty
