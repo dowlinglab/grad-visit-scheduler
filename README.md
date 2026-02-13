@@ -49,10 +49,8 @@ conda install -c conda-forge coincbc
 
 GitHub Actions runs the test suite on pushes to `main` and on pull requests
 targeting `main`. Coverage is uploaded to Codecov from the Python 3.11 job.
-
-To enable Codecov uploads for private repositories, add a repository secret:
-
-- `CODECOV_TOKEN`: token from your Codecov project settings.
+For this public repository, coverage upload uses GitHub OIDC (no
+`CODECOV_TOKEN` secret required).
 
 ## Quickstart
 

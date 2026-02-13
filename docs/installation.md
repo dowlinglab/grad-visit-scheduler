@@ -29,8 +29,8 @@ Repository CI is configured in `.github/workflows/ci.yml` to run tests on:
 - pull requests targeting `main`
 
 Coverage is generated with `pytest-cov` and uploaded to Codecov from one matrix
-job. To enable uploads for private repositories, add a `CODECOV_TOKEN`
-repository secret in GitHub settings.
+job. For this public repository, Codecov upload uses GitHub OIDC and does not
+require a `CODECOV_TOKEN` secret.
 
 ## Optional local docs build
 
