@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
+import os
 from math import isnan
 import re
 from enum import Enum
@@ -1336,11 +1337,18 @@ class Scheduler:
             If ``True``, stream solver output to stdout.
         """
 
+        using_appsi_highs = False
         if self.solver is Solver.HIGHS:
             opt = None
             for solver_name in ("appsi_highs", "highs"):
                 candidate = pyo.SolverFactory(solver_name)
                 if candidate.available():
+                    if solver_name == "appsi_highs":
+                        using_appsi_highs = True
+                        # Avoid RuntimeError on infeasible solves while still
+                        # allowing explicit load for feasible solutions below.
+                        if hasattr(candidate, "config") and hasattr(candidate.config, "load_solution"):
+                            candidate.config.load_solution = False
                     opt = candidate
                     break
             if opt is None:
@@ -1356,7 +1364,19 @@ class Scheduler:
         elif self.solver is Solver.GUROBI_IIS:
             
             # Reference: https://github.com/Pyomo/pyomo/blob/main/examples/pyomo/suffixes/gurobi_ampl_iis.py
-            opt = pyo.SolverFactory('./ampl/gurobi_ampl', solver_io = 'nl')
+            iis_exe = os.environ.get("GVS_GUROBI_IIS_EXECUTABLE", "./ampl/gurobi_ampl")
+            iis_exe_path = Path(iis_exe)
+            if not iis_exe_path.exists():
+                raise RuntimeError(
+                    f"GUROBI_IIS executable not found at '{iis_exe_path}'. "
+                    "Set environment variable GVS_GUROBI_IIS_EXECUTABLE to the executable path."
+                )
+            opt = pyo.SolverFactory(str(iis_exe_path), solver_io='nl')
+            if not opt.available(exception_flag=False):
+                raise RuntimeError(
+                    f"GUROBI_IIS solver is not available via '{iis_exe_path}'. "
+                    "Check executable permissions and Gurobi/AMPL setup."
+                )
             
             # tell gurobi to be verbose with output
             opt.options['outlev'] = 1
@@ -1367,7 +1387,17 @@ class Scheduler:
             # Create an IMPORT Suffix to store the iis information that will be returned by gurobi_ampl
             self.model.iis = Suffix(direction=Suffix.IMPORT)
         
-        results = opt.solve(self.model, tee=tee)
+        try:
+            results = opt.solve(self.model, tee=tee)
+        except RuntimeError as exc:
+            # Some HiGHS/Pyomo interfaces raise on infeasible models when
+            # attempting to auto-load a non-existent solution.
+            if "A feasible solution was not found" not in str(exc):
+                raise
+            results = opt.solve(self.model, tee=tee, load_solutions=False)
+        if using_appsi_highs and results.solver.termination_condition in [TerminationCondition.optimal, TerminationCondition.feasible]:
+            if hasattr(opt, "load_vars"):
+                opt.load_vars()
         
         if self.solver is Solver.GUROBI_IIS:
             print("")
@@ -1603,9 +1633,10 @@ class Scheduler:
         m = self.model
         y = pd.DataFrame.from_dict({f:{s: sum(m.y[s, f, t]() for t in m.time) for s in m.visitors} for f in m.faculty})
         fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-        sns.heatmap(y, ax=ax, annot=df[y.columns], cmap="crest", square=True, cbar=False)
+        sns.heatmap(y, ax=ax, annot=True, cmap="crest", square=True, cbar=False)
         utility = sum(m.utility[s]() for s in m.visitors)
         ax.set_title(f"Total Utility = {utility:0.1f}")
+        return fig, ax
 
     def check_requests(self):
         """Print unmet requested faculty meetings and meeting-count distribution."""

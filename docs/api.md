@@ -57,6 +57,22 @@ report = top.summarize(
 )
 ```
 
+### Top-N Exhaustion Semantics (Developer Note)
+
+When `schedule_visitors_top_n(n_solutions=...)` requests more schedules than are
+uniquely feasible, the solve loop stops after the first infeasible no-good-cut
+iteration. In this case:
+
+- `SolutionSet` contains all feasible unique solutions found so far.
+- `Scheduler.last_solution_set` points to that `SolutionSet`.
+- `Scheduler.results` / `has_feasible_solution()` remain aligned with the last
+  feasible loaded model state.
+- `Scheduler._current_solution_result()` therefore returns the last feasible
+  schedule (with rank `1` as a current-state snapshot rank).
+
+This behavior is intentional so legacy scheduler-level plotting/export methods
+continue to operate after top-N exhaustion.
+
 ## Core Model API
 
 ```{eval-rst}
