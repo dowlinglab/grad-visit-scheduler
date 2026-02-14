@@ -8,6 +8,7 @@ import pyomo.environ as pyo
 from pyomo.common.errors import ApplicationError
 
 from grad_visit_scheduler import scheduler_from_configs, Mode, Solver
+from grad_visit_scheduler.core import slot2min
 from pyomo.opt import TerminationCondition
 
 
@@ -80,6 +81,23 @@ def _gurobi_iis_solver_ready() -> bool:
         return pyo.SolverFactory(str(exe_path), solver_io="nl").available(exception_flag=False)
     except Exception:
         return False
+
+
+def _has_real_time_overlap(solution) -> bool:
+    """Return True if any visitor has overlapping scheduled intervals."""
+    for visitor in solution.visitors:
+        intervals = []
+        for meeting_visitor, faculty, slot in solution.active_meetings:
+            if meeting_visitor != visitor:
+                continue
+            building = solution.context.faculty[faculty]["building"]
+            start_min, end_min = slot2min(solution.context.times_by_building[building][slot - 1])
+            intervals.append((start_min, end_min))
+        intervals.sort()
+        for i in range(1, len(intervals)):
+            if intervals[i][0] < intervals[i - 1][1]:
+                return True
+    return False
 
 
 @pytest.mark.parametrize(
@@ -258,3 +276,36 @@ def test_solver_gurobi_iis_infeasible_path():
     iis_names = [comp.name for comp, _ in iis_items]
     assert any(name.startswith("min_visitors_constraint[") for name in iis_names)
     assert any(name.startswith("y[") for name in iis_names)
+
+
+@pytest.mark.parametrize(
+    ("solver_enum", "solver_name"),
+    [
+        (Solver.HIGHS, "highs"),
+        (Solver.CBC, "cbc"),
+    ],
+)
+def test_solver_shifted_nonoverlap_no_overlap_if_available(solver_enum, solver_name):
+    """Shifted nonoverlap policy should avoid real-time overlaps across available solvers."""
+    if not _solver_available(solver_name):
+        pytest.skip(f"Solver '{solver_name}' is not available")
+
+    root = Path(__file__).parents[1]
+    s = scheduler_from_configs(
+        root / "examples" / "faculty_example.yaml",
+        root / "examples" / "config_shifted_nonoverlap_auto.yaml",
+        root / "examples" / "data_fake_visitors.csv",
+        solver=solver_enum,
+    )
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=4,
+        min_faculty=1,
+        max_group=2,
+        enforce_breaks=False,
+        tee=False,
+        run_name=f"solver_nonoverlap_{solver_name}",
+    )
+    assert sol is not None
+    assert not _has_real_time_overlap(sol)

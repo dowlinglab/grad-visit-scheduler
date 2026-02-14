@@ -2,9 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
-This project follows a simple Keep a Changelog style and uses semantic versioning.
+This project follows a simple *Keep a Changelog* style and uses semantic versioning.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-02-13
+
+### Added
+- New generalized building movement interface via run-config `movement`:
+  - `movement.policy` (`none`, `travel_time`, or `nonoverlap_time`),
+  - `movement.phase_slot` for per-building staggered starts,
+  - `movement.travel_slots` for pairwise inter-building lag constraints.
+- Automatic lag derivation utility `compute_min_travel_lags(...)` for shifted/nonuniform building clocks.
+- Support for one-building and 3+ building close-proximity schedules (no hard two-building requirement).
+- New movement-focused docs page: `docs/movement.md`, with executable examples, result tables, and schedule visuals.
+- New comparison script for generalized building configurations:
+  - `scripts/run_building_configuration_examples.py`.
+- New/expanded movement example configs and catalogs in `examples/`.
+- New shifted-clock auto non-overlap example config:
+  - `examples/config_shifted_nonoverlap_auto.yaml`.
+- Public `Scheduler.current_solution()` accessor for retrieving the currently
+  loaded feasible `SolutionResult` snapshot.
+- Expanded movement hardening tests:
+  - deterministic offset/duration sweep checks for auto lag sufficiency,
+  - lag minimality/monotonicity checks,
+  - 3-building shifted-clock overlap/infeasibility behavior checks,
+  - dedicated example integration solve test.
+
+### Changed
+- `Scheduler` now treats movement config as the preferred interface; legacy `Mode` is compatibility-only.
+- Mathematical formulation docs updated to reflect generalized movement model:
+  - building phase constraints,
+  - travel-time occupancy/lag constraints,
+  - explicit Top-N no-good-cut equation section.
+- Quickstart/API docs now cross-reference movement usage and updated model sections.
+- Building-configuration examples now use the larger formulation dataset to better expose edge cases while remaining fast to solve.
+- `Scheduler.schedule_visitors(...)` now returns `SolutionResult` on feasible
+  solves and `None` when no feasible solution is found.
+- Primary README/quickstart/scripts now use the modern single-solution flow
+  (`sol = s.schedule_visitors(...)`) for plotting and DOCX export.
+- Legacy mode migration guidance now explicitly documents mode-to-movement
+  mappings and the break-behavior nuance for `NO_OFFSET`.
+- Added shifted-clock safety warning for `movement.policy='none'`, plus auto
+  non-overlap movement options (`nonoverlap_time` and `travel_slots: auto`).
+- `slot2min(...)` now validates slot format and increasing time windows with
+  explicit errors for malformed labels.
+- Movement docs now include:
+  - policy selection guide,
+  - failure-modes diagnostics table with message-to-fix mapping,
+  - direct reference to the dedicated shifted auto non-overlap example.
+
+### Deprecated
+- Explicit legacy `mode=...` scheduling interface now emits `FutureWarning` for all modes (`BUILDING_A_FIRST`, `BUILDING_B_FIRST`, and `NO_OFFSET`).
+- Passing both `mode` and `movement` emits `FutureWarning` and ignores `mode`.
+- Top-level `grad_visit_scheduler.export_visitor_docx(...)` remains available
+  for compatibility and continues to emit `FutureWarning`; prefer
+  `SolutionResult.export_visitor_docx(...)`.
 
 ## [0.2.1] - 2026-02-13
 

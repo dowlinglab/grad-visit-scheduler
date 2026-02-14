@@ -46,11 +46,11 @@ def export_visitor_docx(
     ImportError
         If ``python-docx`` is not installed.
     """
-    chosen = solution if solution is not None else scheduler._current_solution_result()
+    chosen = solution if solution is not None else scheduler.current_solution()
     warnings.warn(
         "grad_visit_scheduler.export_visitor_docx(...) is a legacy helper. "
         "Prefer SolutionResult.export_visitor_docx(...) via "
-        "Scheduler.last_solution_set.get(rank) or SolutionSet.export_visitor_docx(...).",
+        "sol = Scheduler.schedule_visitors(...) or Scheduler.current_solution().",
         FutureWarning,
         stacklevel=2,
     )
