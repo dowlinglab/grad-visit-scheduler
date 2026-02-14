@@ -31,6 +31,8 @@ The documentation includes a realistic worked example with 10 visitors, 6 facult
 
 Visitor-view schedule:
 
+TODO: Update this with the most recent figures. A refactor changed the visualization style/color.
+
 ![Visitor Schedule Example](_static/visitor_schedule_example.png)
 
 Faculty-view schedule:
