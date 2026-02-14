@@ -16,10 +16,14 @@ The scheduler expects three inputs.
 
 ### Faculty catalog (`faculty_formulation.yaml`)
 
+TODO: Please show the yaml file contents here. Is there a clever way to embed the file contents without just repeating it? I want to make it easier to keep the docs up to date.
+
 - Defines each faculty member's building, room, research areas, and status.
 - Example statuses: `active`, `legacy`, `external`.
 
 ### Run config (`config_formulation.yaml`)
+
+TODO: Let's shown the yaml file here. See the comment above.
 
 - Defines slot times for two buildings.
 - Uses building names `ABC` and `XYZ`.
@@ -28,6 +32,8 @@ The scheduler expects three inputs.
 - Includes per-faculty availability conflicts.
 
 ### Visitor CSV (`data_formulation_visitors.csv`)
+
+TODO: Please show an excerpt of the file. Is there an easy way to do this that keeps the documentation up to date?
 
 - One row per visitor.
 - Ranked faculty preferences in `Prof1`, `Prof2`, ...
@@ -84,6 +90,8 @@ Common options on `schedule_visitors(...)`:
 ## 4) Inspect and export solutions
 
 Schedule plots from this example:
+
+TODO: Please make sure these are up to date.
 
 ![Visitor Schedule Example](_static/visitor_schedule_example.png)
 
