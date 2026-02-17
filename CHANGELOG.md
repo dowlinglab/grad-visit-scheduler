@@ -6,6 +6,37 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+### Added
+- Primary focus for this unreleased cycle: documentation, examples, and testing improvements.
+- New movement example config for three shifted buildings with no breaks:
+  - `examples/config_three_buildings_shifted_nonoverlap.yaml`.
+- Additional movement example configs for explicit travel-lag comparisons:
+  - `examples/config_two_buildings_travel_delay.yaml`,
+  - `examples/config_three_buildings_travel_delay.yaml`,
+  - `examples/config_shifted_abc_earlier_nonoverlap.yaml`,
+  - `examples/config_shifted_xyz_earlier_nonoverlap.yaml`.
+- New docs-regression test that ties all documented movement examples to computed results:
+  - `tests/test_movement_examples_docs_regression.py`.
+  - Includes maintainer breadcrumb to update `docs/movement.md` when scenario outputs drift.
+- Expanded coverage-hardening tests for:
+  - direct `Scheduler(..., movement=...)` validation branches,
+  - malformed run-config movement/building shapes,
+  - warning-format edge cases for many risky shifted-clock building pairs,
+  - GUROBI_IIS option/suffix/print branches via controlled test doubles.
+
+### Changed
+- `docs/movement.md` restructured around a unified comparison table and standardized per-example narrative sections with operational context.
+- Added explicit derived travel-lag matrix and practical computation snippet for Example 10 in `docs/movement.md`.
+- `docs/quickstart.md` now embeds live input-file contents via `literalinclude` for full YAMLs and CSV excerpt.
+- Refreshed docs images in `docs/_static` and aligned references to new standardized movement figure filenames.
+- Merged movement comparison workflow into `scripts/run_building_configuration_examples.py` and kept `scripts/run_shifted_start_comparison.py` as a compatibility wrapper.
+- Scenario runner now sets `enforce_breaks` from run-config content (`breaks` presence), allowing no-break scenarios to run cleanly.
+- Strengthened optional solver basic regression checks to validate objective value while avoiding brittle full-assignment assertions.
+
+### Notes
+- Current local test/coverage run reports full package line coverage (`100%`) with:
+  - `conda run -n grad_scheduling pytest --cov=src/grad_visit_scheduler --cov-report=term-missing -q`.
+
 ## [0.3.0] - 2026-02-13
 
 ### Added
