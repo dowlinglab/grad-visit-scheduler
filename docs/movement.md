@@ -54,6 +54,7 @@ This command prints one unified comparison table and writes scenario plots to
 | Shifted clocks | Shifted clocks (XYZ starts 15 min earlier) | `nonoverlap_time` | True | 110.9 | 30 | 30 | 13 |
 | Phase slot | Staggered start (ABC first) | `none` | True | 101.8 | 26 | 26 | 11 |
 | Phase slot | Staggered start (XYZ first) | `none` | True | 94.9 | 24 | 23 | 9 |
+| Shifted clocks | Three buildings (10-minute shifted clocks, no breaks) | `nonoverlap_time` | True | 116.1 | 33 | 31 | 14 |
 
 Interpretation of the close-building equivalence:
 
@@ -74,11 +75,12 @@ Here are the files used in these examples.
 | `shifted_xyz_earlier_nonoverlap` | `examples/config_shifted_xyz_earlier_nonoverlap.yaml` | `examples/faculty_formulation.yaml` |
 | `staggered_a_first` | `examples/config_shifted_a_first.yaml` | `examples/faculty_formulation.yaml` |
 | `staggered_b_first` | `examples/config_shifted_b_first.yaml` | `examples/faculty_formulation.yaml` |
+| `three_shifted_nonoverlap` | `examples/config_three_buildings_shifted_nonoverlap.yaml` | `examples/faculty_three_buildings.yaml` |
 
 
 ### Example 1: One building (no movement)
 
-TODO: Add a sentence summarizing this example.
+This is the simplest operational baseline: everyone is in one building, so movement constraints are irrelevant and the model focuses only on preferences and availability.
 
 Configuration:
 
@@ -94,7 +96,7 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 
 ### Example 2: Two nearby buildings
 
-TODO: Add a sentence summarizing this example.
+This is a two-building day where buildings are close enough that explicit travel lags are not modeled, which matches operations where walking time is negligible at the slot scale.
 
 Configuration:
 
@@ -108,7 +110,7 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 
 ### Example 3: Three nearby buildings
 
-TODO: Add a sentence summarizing this example.
+This extends the close-building baseline to three locations and is useful when events are spread across multiple nearby spaces with effectively synchronized movement.
 
 
 Configuration:
@@ -123,7 +125,7 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 
 ### Example 4: Two buildings with one-slot travel delays
 
-TODO: Add a sentence summarizing this example.
+This scenario introduces explicit travel lag constraints between two buildings and represents operations where cross-building movement must consume at least one slot of separation.
 
 
 Configuration:
@@ -138,7 +140,7 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 
 ### Example 5: Three buildings with one-slot travel delays
 
-TODO: Add a sentence summarizing this example.
+This is the strict three-building travel-lag case and reflects operations where every cross-building move needs buffer time, which can reduce achievable assignments.
 
 
 Configuration:
@@ -153,7 +155,7 @@ Result summary: feasible, objective `103.7`, assignments `28`, requested assignm
 
 ### Example 6: Shifted clocks, building ABC starts 15 minutes earlier
 
-TODO: Add a sentence summarizing this example.
+This shifted-clock setup models operations where ABC sessions begin earlier than XYZ and movement feasibility is enforced directly from real clock times.
 
 
 Configuration:
@@ -174,7 +176,7 @@ Why this addresses cross-building movement without explicit break slots:
 
 ### Example 7: Shifted clocks, building XYZ starts 15 minutes earlier
 
-TODO: Add a sentence summarizing this example.
+This is the mirrored shifted-clock case where XYZ starts earlier, useful when visitor flow or host logistics make XYZ the natural starting location.
 
 
 Configuration:
@@ -189,7 +191,7 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 
 ### Example 8: Synced clocks, building ABC starts first
 
-TODO: Add a sentence summarizing this example and why it would be used, e.g., visitors are already in building ABC.
+This phase-slot scenario is appropriate when visitors begin the event near ABC (for example, check-in or welcome activities in ABC), so scheduling intentionally opens ABC first.
 
 Configuration:
 
@@ -203,7 +205,7 @@ Result summary: feasible, objective `101.8`, assignments `26`, requested assignm
 
 ###  Example 9: Synced clocks, building XYZ starts first
 
-TODO: Add a sentence summarizing this example.
+This is the corresponding XYZ-first phase-slot variant for operations where the event begins near XYZ and initial visitor distribution favors that building.
 
 
 Configuration:
@@ -218,7 +220,53 @@ Result summary: feasible, objective `94.9`, assignments `24`, requested assignme
 
 ###  Example 10: Three buildings with shifted clocks
 
-TODO: Need to create a new example. Let's assume meetings are 25 minutes with a 5 minute travel break. The three buildings are approximately 6 minutes apart, thus the 5 minute travel window is not sufficient. Instead, the building time grids will be offset by 10 minutes. For example, build ABC could start at 1:00pm, IJK starts at 1:10pm, and XYZ starts at 1:20pm.
+This recommended three-building shifted-clock setup models staggered time grids (ABC at `:00`, LMN at `:10`, XYZ at `:20`) so visitors can move between buildings without relying on dedicated break slots.
+
+Configuration:
+
+- `examples/config_three_buildings_shifted_nonoverlap.yaml`
+- `examples/faculty_three_buildings.yaml`
+
+Result summary: feasible, objective `116.1`, assignments `33`, requested assignments `31`, group slots `14`.
+
+Why these results are sensible:
+
+- `nonoverlap_time` automatically enforces physically valid movement using absolute timestamps across all three buildings.
+- This example intentionally has no configured breaks, which increases available meeting capacity relative to break-constrained scenarios.
+- The objective and assignment counts increase (vs. the baseline 30 assignments) because the model can schedule more total meetings while still respecting non-overlap travel feasibility.
+
+Derived travel lag matrix used by the solver in this example:
+
+```yaml
+ABC:
+  ABC: 0
+  LMN: 0
+  XYZ: 0
+LMN:
+  ABC: 1
+  LMN: 0
+  XYZ: 0
+XYZ:
+  ABC: 1
+  LMN: 1
+  XYZ: 0
+```
+
+How to compute/inspect this in practice:
+
+```python
+from pathlib import Path
+from grad_visit_scheduler import load_run_config, build_times_by_building, compute_min_travel_lags
+
+root = Path("examples")
+cfg = load_run_config(root / "config_three_buildings_shifted_nonoverlap.yaml")
+times = build_times_by_building(cfg)
+lags = compute_min_travel_lags(times, min_buffer_minutes=0)
+print(lags)
+```
+
+![Three Shifted Buildings Visitor View](_static/movement_three_shifted_nonoverlap_visitor.png)
+![Three Shifted Buildings Faculty View](_static/movement_three_shifted_nonoverlap_faculty.png)
 
 
 ## Legacy Mode Mappings

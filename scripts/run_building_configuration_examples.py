@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+import yaml
 
 # Allow running without installing the package
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +104,14 @@ SCENARIOS: tuple[Scenario, ...] = (
         run_file="config_shifted_b_first.yaml",
         notes="phase_slot offset with policy=none.",
     ),
+    Scenario(
+        slug="three_shifted_nonoverlap",
+        category="Shifted clocks",
+        label="Three buildings (10-minute shifted clocks, no breaks)",
+        faculty_file="faculty_three_buildings.yaml",
+        run_file="config_three_buildings_shifted_nonoverlap.yaml",
+        notes="Recommended shifted-clock setup using nonoverlap_time.",
+    ),
 )
 
 
@@ -119,9 +128,14 @@ def _pushd(path: Path):
 
 def _solve_case(scenario: Scenario, plot_dir: Path | None):
     examples = ROOT / "examples"
+    run_cfg_path = examples / scenario.run_file
+    with run_cfg_path.open("r", encoding="utf-8") as f:
+        run_cfg = yaml.safe_load(f) or {}
+    enforce_breaks = bool(run_cfg.get("breaks"))
+
     scheduler = scheduler_from_configs(
         examples / scenario.faculty_file,
-        examples / scenario.run_file,
+        run_cfg_path,
         examples / "data_formulation_visitors.csv",
         solver=Solver.HIGHS,
     )
@@ -132,7 +146,7 @@ def _solve_case(scenario: Scenario, plot_dir: Path | None):
         max_visitors=8,
         min_faculty=1,
         max_group=2,
-        enforce_breaks=True,
+        enforce_breaks=enforce_breaks,
         tee=False,
         run_name=scenario.slug,
     )
