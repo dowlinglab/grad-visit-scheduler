@@ -6,8 +6,10 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-02-17
+
 ### Added
-- Primary focus for this unreleased cycle: documentation, examples, and testing improvements.
+- Primary focus for this release: documentation, examples, and testing improvements.
 - New movement example config for three shifted buildings with no breaks:
   - `examples/config_three_buildings_shifted_nonoverlap.yaml`.
 - Additional movement example configs for explicit travel-lag comparisons:
