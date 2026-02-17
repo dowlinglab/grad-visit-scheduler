@@ -32,7 +32,7 @@ movement:
 - `travel_slots: auto`: allowed with `policy: travel_time`.
 - `min_buffer_minutes`: optional nonnegative buffer for auto-derived lags.
 
-## Unified Comparison (All Scenarios)
+## Examples for Different Building Configurations
 
 Run every scenario and regenerate all movement figures:
 
@@ -61,7 +61,7 @@ Interpretation of the close-building equivalence:
 - Practically, that means the added movement constraints are non-binding for this particular demand/availability profile.
 - The three-building +1 lag case is stricter (more inter-building transition edges), so objective and assignments decrease.
 
-## Scenario Files
+Here are the files used in these examples.
 
 | Slug | Config | Faculty Catalog |
 | --- | --- | --- |
@@ -75,9 +75,10 @@ Interpretation of the close-building equivalence:
 | `staggered_a_first` | `examples/config_shifted_a_first.yaml` | `examples/faculty_formulation.yaml` |
 | `staggered_b_first` | `examples/config_shifted_b_first.yaml` | `examples/faculty_formulation.yaml` |
 
-## Standardized Scenario Results
 
-### 1) One building (no movement)
+### Example 1: One building (no movement)
+
+TODO: Add a sentence summarizing this example.
 
 Configuration:
 
@@ -89,7 +90,11 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 ![One Building Visitor View](_static/movement_one_building_visitor.png)
 ![One Building Faculty View](_static/movement_one_building_faculty.png)
 
-### 2) Two buildings (close, no explicit lag)
+
+
+### Example 2: Two nearby buildings
+
+TODO: Add a sentence summarizing this example.
 
 Configuration:
 
@@ -101,7 +106,10 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 ![Two Close Buildings Visitor View](_static/movement_two_close_none_visitor.png)
 ![Two Close Buildings Faculty View](_static/movement_two_close_none_faculty.png)
 
-### 3) Three buildings (close, no explicit lag)
+### Example 3: Three nearby buildings
+
+TODO: Add a sentence summarizing this example.
+
 
 Configuration:
 
@@ -113,7 +121,10 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 ![Three Close Buildings Visitor View](_static/movement_three_close_none_visitor.png)
 ![Three Close Buildings Faculty View](_static/movement_three_close_none_faculty.png)
 
-### 4) Two buildings with one-slot travel delay
+### Example 4: Two buildings with one-slot travel delays
+
+TODO: Add a sentence summarizing this example.
+
 
 Configuration:
 
@@ -125,7 +136,10 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 ![Two Buildings Travel Lag Visitor View](_static/movement_two_travel_lag1_visitor.png)
 ![Two Buildings Travel Lag Faculty View](_static/movement_two_travel_lag1_faculty.png)
 
-### 5) Three buildings with one-slot travel delay
+### Example 5: Three buildings with one-slot travel delays
+
+TODO: Add a sentence summarizing this example.
+
 
 Configuration:
 
@@ -137,7 +151,10 @@ Result summary: feasible, objective `103.7`, assignments `28`, requested assignm
 ![Three Buildings Travel Lag Visitor View](_static/movement_three_travel_lag1_visitor.png)
 ![Three Buildings Travel Lag Faculty View](_static/movement_three_travel_lag1_faculty.png)
 
-### 6) Shifted clocks, ABC starts 15 minutes earlier
+### Example 6: Shifted clocks, building ABC starts 15 minutes earlier
+
+TODO: Add a sentence summarizing this example.
+
 
 Configuration:
 
@@ -155,7 +172,10 @@ Why this addresses cross-building movement without explicit break slots:
 ![ABC Earlier Shifted Visitor View](_static/movement_shifted_abc_earlier_nonoverlap_visitor.png)
 ![ABC Earlier Shifted Faculty View](_static/movement_shifted_abc_earlier_nonoverlap_faculty.png)
 
-### 7) Shifted clocks, XYZ starts 15 minutes earlier
+### Example 7: Shifted clocks, building XYZ starts 15 minutes earlier
+
+TODO: Add a sentence summarizing this example.
+
 
 Configuration:
 
@@ -167,7 +187,9 @@ Result summary: feasible, objective `110.9`, assignments `30`, requested assignm
 ![XYZ Earlier Shifted Visitor View](_static/movement_shifted_xyz_earlier_nonoverlap_visitor.png)
 ![XYZ Earlier Shifted Faculty View](_static/movement_shifted_xyz_earlier_nonoverlap_faculty.png)
 
-### 8) Staggered starts (ABC first)
+### Example 8: Synced clocks, building ABC starts first
+
+TODO: Add a sentence summarizing this example and why it would be used, e.g., visitors are already in building ABC.
 
 Configuration:
 
@@ -179,7 +201,10 @@ Result summary: feasible, objective `101.8`, assignments `26`, requested assignm
 ![Staggered ABC First Visitor View](_static/movement_staggered_a_first_visitor.png)
 ![Staggered ABC First Faculty View](_static/movement_staggered_a_first_faculty.png)
 
-### 9) Staggered starts (XYZ first)
+###  Example 9: Synced clocks, building XYZ starts first
+
+TODO: Add a sentence summarizing this example.
+
 
 Configuration:
 
@@ -191,7 +216,12 @@ Result summary: feasible, objective `94.9`, assignments `24`, requested assignme
 ![Staggered XYZ First Visitor View](_static/movement_staggered_b_first_visitor.png)
 ![Staggered XYZ First Faculty View](_static/movement_staggered_b_first_faculty.png)
 
-## Legacy Mode Mappings (Integrated Reference)
+###  Example 10: Three buildings with shifted clocks
+
+TODO: Need to create a new example. Let's assume meetings are 25 minutes with a 5 minute travel break. The three buildings are approximately 6 minutes apart, thus the 5 minute travel window is not sufficient. Instead, the building time grids will be offset by 10 minutes. For example, build ABC could start at 1:00pm, IJK starts at 1:10pm, and XYZ starts at 1:20pm.
+
+
+## Legacy Mode Mappings
 
 Legacy modes are still available with `FutureWarning` and map to movement configs:
 
