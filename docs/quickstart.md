@@ -16,14 +16,18 @@ The scheduler expects three inputs.
 
 ### Faculty catalog (`faculty_formulation.yaml`)
 
-TODO: Please show the yaml file contents here. Is there a clever way to embed the file contents without just repeating it? I want to make it easier to keep the docs up to date.
+```{literalinclude} ../examples/faculty_formulation.yaml
+:language: yaml
+```
 
 - Defines each faculty member's building, room, research areas, and status.
 - Example statuses: `active`, `legacy`, `external`.
 
 ### Run config (`config_formulation.yaml`)
 
-TODO: Let's shown the yaml file here. See the comment above.
+```{literalinclude} ../examples/config_formulation.yaml
+:language: yaml
+```
 
 - Defines slot times for two buildings.
 - Uses building names `ABC` and `XYZ`.
@@ -33,7 +37,10 @@ TODO: Let's shown the yaml file here. See the comment above.
 
 ### Visitor CSV (`data_formulation_visitors.csv`)
 
-TODO: Please show an excerpt of the file. Is there an easy way to do this that keeps the documentation up to date?
+```{literalinclude} ../examples/data_formulation_visitors.csv
+:language: text
+:lines: 1-7
+```
 
 - One row per visitor.
 - Ranked faculty preferences in `Prof1`, `Prof2`, ...
@@ -90,8 +97,6 @@ Common options on `schedule_visitors(...)`:
 ## 4) Inspect and export solutions
 
 Schedule plots from this example:
-
-TODO: Please make sure these are up to date.
 
 ![Visitor Schedule Example](_static/visitor_schedule_example.png)
 
@@ -187,7 +192,7 @@ Repository examples:
 Comparison runner:
 
 ```bash
-python scripts/run_shifted_start_comparison.py
+python scripts/run_building_configuration_examples.py --slugs staggered_a_first staggered_b_first
 ```
 
 For full movement-policy details (one/two/three-building cases and travel-time

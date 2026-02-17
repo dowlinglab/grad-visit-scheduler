@@ -130,7 +130,7 @@ for those schedules.
 
 Legacy `Mode.*` options are still available with `FutureWarning`.
 
-See [`docs/movement.md`](docs/movement.md) and `scripts/run_shifted_start_comparison.py` for full examples.
+See [`docs/movement.md`](docs/movement.md) and `scripts/run_building_configuration_examples.py` for full examples.
 For common configuration mistakes and fixes, see the
 `Failure Modes and Diagnostics` section in [`docs/movement.md`](docs/movement.md).
 ## Refine the Schedule

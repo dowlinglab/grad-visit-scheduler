@@ -1,22 +1,14 @@
 # Building Movement and Staggered Starts
 
-This page documents the new movement interface in the run config (`movement:`),
-which generalizes scheduling across one, two, or many buildings.
+This page documents the movement interface in run configs (`movement:`) and shows
+one standardized comparison across all examples.
 
-All examples on this page use the larger formulation visitor dataset:
+All scenarios here use:
 
 - `examples/data_formulation_visitors.csv`
-- `examples/faculty_formulation.yaml` (or building-variant catalogs derived from it)
-
-GitHub source links for this page:
-
-- [movement docs examples folder](https://github.com/dowlinglab/grad-visit-scheduler/tree/main/examples)
-- [one/two/three building script](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/scripts/run_building_configuration_examples.py)
-- [A-first/B-first comparison script](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/scripts/run_shifted_start_comparison.py)
+- A faculty catalog matching the number of buildings in the scenario
 
 ## Movement Configuration
-
-Add a `movement` block to your run config:
 
 ```yaml
 movement:
@@ -33,287 +25,181 @@ movement:
       BuildingB: 0
 ```
 
-- `policy: none`: buildings are treated as close-proximity; no explicit travel-time constraints.
-- `policy: travel_time`: enforces pairwise building-to-building lag constraints using `travel_slots`.
-- `policy: nonoverlap_time`: automatically computes `travel_slots` from absolute slot timestamps to prevent real-time overlap.
-- `phase_slot`: earliest slot each building is allowed to host meetings. This enables staggered starts.
-- `travel_slots: auto`: available with `policy: travel_time`; computes lag matrix from timestamps.
-- `min_buffer_minutes`: optional extra buffer applied to auto-computed lag transitions.
+- `policy: none`: no explicit inter-building travel-time constraints.
+- `policy: travel_time`: explicit pairwise slot lag constraints from `travel_slots`.
+- `policy: nonoverlap_time`: auto-derive lag constraints from absolute slot timestamps.
+- `phase_slot`: earliest slot allowed for each building (supports staggered starts).
+- `travel_slots: auto`: allowed with `policy: travel_time`.
+- `min_buffer_minutes`: optional nonnegative buffer for auto-derived lags.
 
-## Policy Selection Guide
+## Unified Comparison (All Scenarios)
 
-Use this quick guide to pick the right movement policy:
-
-| Scenario | Recommended policy | Why |
-| --- | --- | --- |
-| One building | `none` | No inter-building movement exists. |
-| Multiple buildings with identical/non-overlapping clock grids and no travel modeling needed | `none` | Simplest model, fastest solve. |
-| Shifted or nonuniform building clocks where real-time overlap must be prevented | `nonoverlap_time` | Auto-derives safe lag matrix from absolute times. |
-| Need explicit/manual travel lags (domain-specific travel assumptions) | `travel_time` + manual `travel_slots` | Full user control over pairwise lag policy. |
-| Want travel-time formulation but avoid hand-building lag matrix | `travel_time` + `travel_slots: auto` | Same automatic lag derivation as `nonoverlap_time`. |
-
-Practical recommendation:
-- Start with `nonoverlap_time` for shifted-clock schedules.
-- Move to manual `travel_time` only when you have a deliberate reason to override derived lags.
-
-## Shifted Clock Safety
-
-If buildings use shifted/nonuniform clock grids (for example `1:00-1:25` in one
-building and `1:15-1:40` in another), `policy: none` can allow real-time
-visitor overlaps across adjacent slot indices.
-
-The scheduler now emits a warning for this configuration. Recommended fix:
-
-```yaml
-movement:
-  policy: nonoverlap_time
-  phase_slot:
-    MCH: 1
-    NSH: 2
-  min_buffer_minutes: 0
-```
-
-Equivalent explicit option:
-
-```yaml
-movement:
-  policy: travel_time
-  phase_slot:
-    MCH: 1
-    NSH: 2
-  travel_slots: auto
-  min_buffer_minutes: 0
-```
-
-Dedicated repository example:
-
-- [`examples/config_shifted_nonoverlap_auto.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_nonoverlap_auto.yaml)
-
-## Failure Modes and Diagnostics
-
-Common movement-configuration pitfalls and how to fix them.
-
-| Symptom (message) | Likely cause | Recommended fix |
-| --- | --- | --- |
-| `UserWarning: movement.policy='none' ... can allow real-time visitor overlaps ...` | Shifted/nonuniform building clocks with `policy: none`. | Switch to `policy: nonoverlap_time`, or use `policy: travel_time` with `travel_slots: auto`. |
-| `ValueError: Unsupported movement policy '...'` | Typo or unsupported `movement.policy`. | Use one of: `none`, `travel_time`, `nonoverlap_time`. |
-| `ValueError: movement.policy='nonoverlap_time' only supports travel_slots omitted or set to 'auto'.` | Manual lag matrix passed with `nonoverlap_time`. | Remove `travel_slots` or set `travel_slots: auto`. Use `travel_time` if you need manual lag control. |
-| `ValueError: movement.travel_slots must be a dictionary or 'auto'.` | Invalid `travel_slots` type/value. | Provide nested mapping per building pair, or set `travel_slots: auto`. |
-| `ValueError: movement.phase_slot[...] is outside valid slot range ...` | Phase slot index out of bounds. | Use phase slots between `1` and number of configured slots. |
-| `ValueError: movement.min_buffer_minutes must be a nonnegative integer.` | Negative buffer value. | Set `min_buffer_minutes >= 0`. |
-| `ValueError: Invalid slot label '...'` or `End time must be after start time.` | Malformed time slot strings in `buildings:`. | Use strict `H:MM-H:MM` labels with increasing times (e.g., `1:15-1:40`). |
-
-### Programmatic-config diagnostics
-
-If you construct `Scheduler(..., movement=...)` directly (instead of
-`scheduler_from_configs(...)`), these additional travel-matrix errors can occur:
-
-- `movement.travel_slots is missing row for 'BuildingX'`
-- `movement.travel_slots['BuildingX'] is missing destination 'BuildingY'`
-- `movement.travel_slots values must be nonnegative integers`
-
-These indicate an incomplete or invalid pairwise lag matrix. The matrix must
-include every source/destination building pair, with nonnegative integer lags.
-
-## Example Results
-
-The following table is generated by:
+Run every scenario and regenerate all movement figures:
 
 ```bash
 python scripts/run_building_configuration_examples.py
 ```
 
-TODO: Please explain why these results make sense -- because the buildings are close, these three formulations are mathematically equivalent.
+This command prints one unified comparison table and writes scenario plots to
+`docs/_static/movement_<slug>_{visitor,faculty}.png`.
 
-| Scenario | Feasible | Objective | Assignments | Requested Assignments | Group Slots |
-| --- | --- | ---: | ---: | ---: | ---: |
-| One building | True | 110.9 | 30 | 30 | 13 |
-| Two buildings (close) | True | 110.9 | 30 | 30 | 13 |
-| Three buildings (close) | True | 110.9 | 30 | 30 | 13 |
+| Category | Scenario | Policy | Feasible | Objective | Assignments | Requested Assignments | Group Slots |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| Baseline | One building (no movement) | `none` | True | 110.9 | 30 | 30 | 13 |
+| Baseline | Two buildings (close, policy=none) | `none` | True | 110.9 | 30 | 30 | 13 |
+| Baseline | Three buildings (close, policy=none) | `none` | True | 110.9 | 30 | 30 | 13 |
+| Travel lag | Two buildings (+1 slot travel lag) | `travel_time` | True | 110.9 | 30 | 30 | 13 |
+| Travel lag | Three buildings (+1 slot travel lag) | `travel_time` | True | 103.7 | 28 | 25 | 12 |
+| Shifted clocks | Shifted clocks (ABC starts 15 min earlier) | `nonoverlap_time` | True | 110.9 | 30 | 30 | 13 |
+| Shifted clocks | Shifted clocks (XYZ starts 15 min earlier) | `nonoverlap_time` | True | 110.9 | 30 | 30 | 13 |
+| Phase slot | Staggered start (ABC first) | `none` | True | 101.8 | 26 | 26 | 11 |
+| Phase slot | Staggered start (XYZ first) | `none` | True | 94.9 | 24 | 23 | 9 |
 
-TODO: We want to look at a few other configurations: A. Two buildings with one time slot delay travel time between buildings. B. Three buildings with one time slot delay travel time between buildings. C. Two buildings where the first building starts 15 minutes earlier and 15 minutes (half time slot) is sufficient to move between buildings. D. Similar to case C, but the second build starts 15 minutes before the first building.
+Interpretation of the close-building equivalence:
 
-## Supported Patterns
+- In this dataset, one-building, two-close-building, three-close-building, and two-building `travel_time` (+1 lag) all attain the same optimum.
+- Practically, that means the added movement constraints are non-binding for this particular demand/availability profile.
+- The three-building +1 lag case is stricter (more inter-building transition edges), so objective and assignments decrease.
 
-### 1) One building
+## Scenario Files
 
-Use a single building in `buildings:` with `policy: none`.
+| Slug | Config | Faculty Catalog |
+| --- | --- | --- |
+| `one_building` | `examples/config_one_building.yaml` | `examples/faculty_one_building.yaml` |
+| `two_close_none` | `examples/config_two_buildings_close.yaml` | `examples/faculty_formulation.yaml` |
+| `three_close_none` | `examples/config_three_buildings_close.yaml` | `examples/faculty_three_buildings.yaml` |
+| `two_travel_lag1` | `examples/config_two_buildings_travel_delay.yaml` | `examples/faculty_formulation.yaml` |
+| `three_travel_lag1` | `examples/config_three_buildings_travel_delay.yaml` | `examples/faculty_three_buildings.yaml` |
+| `shifted_abc_earlier_nonoverlap` | `examples/config_shifted_abc_earlier_nonoverlap.yaml` | `examples/faculty_formulation.yaml` |
+| `shifted_xyz_earlier_nonoverlap` | `examples/config_shifted_xyz_earlier_nonoverlap.yaml` | `examples/faculty_formulation.yaml` |
+| `staggered_a_first` | `examples/config_shifted_a_first.yaml` | `examples/faculty_formulation.yaml` |
+| `staggered_b_first` | `examples/config_shifted_b_first.yaml` | `examples/faculty_formulation.yaml` |
 
-- Example config: [`examples/config_one_building.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_one_building.yaml)
-- Example faculty catalog: [`examples/faculty_one_building.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/faculty_one_building.yaml)
-- Visitor data: [`examples/data_formulation_visitors.csv`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/data_formulation_visitors.csv)
+## Standardized Scenario Results
+
+### 1) One building (no movement)
+
+Configuration:
+
+- `examples/config_one_building.yaml`
+- `examples/faculty_one_building.yaml`
+
+Result summary: feasible, objective `110.9`, assignments `30`, requested assignments `30`, group slots `13`.
 
 ![One Building Visitor View](_static/movement_one_building_visitor.png)
+![One Building Faculty View](_static/movement_one_building_faculty.png)
 
-### 2) Two close buildings (no travel-time constraints)
+### 2) Two buildings (close, no explicit lag)
 
-Use two buildings with `policy: none` and both phase slots set to `1`.
+Configuration:
 
-- Example config: [`examples/config_two_buildings_close.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_two_buildings_close.yaml)
-- Faculty catalog: [`examples/faculty_formulation.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/faculty_formulation.yaml)
-- Visitor data: [`examples/data_formulation_visitors.csv`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/data_formulation_visitors.csv)
+- `examples/config_two_buildings_close.yaml`
+- `examples/faculty_formulation.yaml`
 
-![Two Buildings Close Visitor View](_static/movement_two_buildings_close_visitor.png)
+Result summary: feasible, objective `110.9`, assignments `30`, requested assignments `30`, group slots `13`.
 
-### 3) Three or more close buildings (no travel-time constraints)
+![Two Close Buildings Visitor View](_static/movement_two_close_none_visitor.png)
+![Two Close Buildings Faculty View](_static/movement_two_close_none_faculty.png)
 
-Use `policy: none` with one `phase_slot` entry per building.
+### 3) Three buildings (close, no explicit lag)
 
-- Example config: [`examples/config_three_buildings_close.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_three_buildings_close.yaml)
-- Example faculty catalog: [`examples/faculty_three_buildings.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/faculty_three_buildings.yaml)
-- Visitor data: [`examples/data_formulation_visitors.csv`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/data_formulation_visitors.csv)
+Configuration:
 
-![Three Buildings Close Visitor View](_static/movement_three_buildings_close_visitor.png)
+- `examples/config_three_buildings_close.yaml`
+- `examples/faculty_three_buildings.yaml`
 
-## Staggered Starts (A First vs B First)
+Result summary: feasible, objective `110.9`, assignments `30`, requested assignments `30`, group slots `13`.
 
-TODO: This example needs to get integrated into the comparison table. This seems like additional example configurations.
+![Three Close Buildings Visitor View](_static/movement_three_close_none_visitor.png)
+![Three Close Buildings Faculty View](_static/movement_three_close_none_faculty.png)
 
-Staggered starts are now represented through `phase_slot`.
+### 4) Two buildings with one-slot travel delay
 
-- Building A first:
+Configuration:
 
-```yaml
-movement:
-  policy: none
-  phase_slot:
-    BuildingA: 1
-    BuildingB: 2
-```
+- `examples/config_two_buildings_travel_delay.yaml`
+- `examples/faculty_formulation.yaml`
 
-- Building B first:
+Result summary: feasible, objective `110.9`, assignments `30`, requested assignments `30`, group slots `13`.
 
-```yaml
-movement:
-  policy: none
-  phase_slot:
-    BuildingA: 2
-    BuildingB: 1
-```
+![Two Buildings Travel Lag Visitor View](_static/movement_two_travel_lag1_visitor.png)
+![Two Buildings Travel Lag Faculty View](_static/movement_two_travel_lag1_faculty.png)
 
-Repository configs:
+### 5) Three buildings with one-slot travel delay
 
-- [`examples/config_shifted_a_first.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_a_first.yaml)
-- [`examples/config_shifted_b_first.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_b_first.yaml)
+Configuration:
 
-TODO: The comparison runner should get updated to compare all of the configurations mentioned on this page.
+- `examples/config_three_buildings_travel_delay.yaml`
+- `examples/faculty_three_buildings.yaml`
 
-Comparison runner:
+Result summary: feasible, objective `103.7`, assignments `28`, requested assignments `25`, group slots `12`.
 
-```bash
-python scripts/run_shifted_start_comparison.py
-```
+![Three Buildings Travel Lag Visitor View](_static/movement_three_travel_lag1_visitor.png)
+![Three Buildings Travel Lag Faculty View](_static/movement_three_travel_lag1_faculty.png)
 
-This script solves both scenarios and prints a side-by-side table of objective
-value and key schedule metrics, then writes both visitor and faculty plots.
+### 6) Shifted clocks, ABC starts 15 minutes earlier
 
-The script uses:
+Configuration:
 
-- [`examples/faculty_formulation.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/faculty_formulation.yaml)
-- [`examples/data_formulation_visitors.csv`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/data_formulation_visitors.csv)
-- [`examples/config_shifted_a_first.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_a_first.yaml)
-- [`examples/config_shifted_b_first.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_b_first.yaml)
+- `examples/config_shifted_abc_earlier_nonoverlap.yaml`
+- `examples/faculty_formulation.yaml`
 
-Results:
+Result summary: feasible, objective `110.9`, assignments `30`, requested assignments `30`, group slots `13`.
 
-| Scenario | Feasible | Objective | Meetings | Requested Meetings | Group Meetings |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Building A first | True | 101.8 | 26 | 26 | 11 |
-| Building B first | True | 94.9 | 24 | 23 | 9 |
+Why this addresses cross-building movement without explicit break slots:
 
-TODO: Integrate this into early discussion of the different scenarios.
+- `nonoverlap_time` derives travel lags from absolute timestamps.
+- Adjacent-slot transitions are allowed when the destination slot starts after the source slot ends.
+- That lets the model permit valid moves directly from one meeting to the next when timing permits.
 
-TODO: Present the results for each scenario in a standardized way. I prefer describing each configuration and then showing that specific configuration results. This will be easier. 
+![ABC Earlier Shifted Visitor View](_static/movement_shifted_abc_earlier_nonoverlap_visitor.png)
+![ABC Earlier Shifted Faculty View](_static/movement_shifted_abc_earlier_nonoverlap_faculty.png)
 
-Visitor-view plots:
+### 7) Shifted clocks, XYZ starts 15 minutes earlier
 
-![Shifted A First Visitor View](_static/movement_shifted_a_first_visitor.png)
+Configuration:
 
-![Shifted B First Visitor View](_static/movement_shifted_b_first_visitor.png)
+- `examples/config_shifted_xyz_earlier_nonoverlap.yaml`
+- `examples/faculty_formulation.yaml`
 
-Faculty-view plots:
+Result summary: feasible, objective `110.9`, assignments `30`, requested assignments `30`, group slots `13`.
 
-![Shifted A First Faculty View](_static/movement_shifted_a_first_faculty.png)
+![XYZ Earlier Shifted Visitor View](_static/movement_shifted_xyz_earlier_nonoverlap_visitor.png)
+![XYZ Earlier Shifted Faculty View](_static/movement_shifted_xyz_earlier_nonoverlap_faculty.png)
 
-![Shifted B First Faculty View](_static/movement_shifted_b_first_faculty.png)
+### 8) Staggered starts (ABC first)
 
-## Executable Comparison Across 1/2/3 Buildings
+Configuration:
 
-TODO: This needs to get integrated into the discussion of difference scenarios.
+- `examples/config_shifted_a_first.yaml`
+- `examples/faculty_formulation.yaml`
 
-Run all close-proximity building-configuration examples (one, two, and three buildings)
-on the large formulation dataset:
+Result summary: feasible, objective `101.8`, assignments `26`, requested assignments `26`, group slots `11`.
 
-```bash
-python scripts/run_building_configuration_examples.py
-```
+![Staggered ABC First Visitor View](_static/movement_staggered_a_first_visitor.png)
+![Staggered ABC First Faculty View](_static/movement_staggered_a_first_faculty.png)
 
-This prints a side-by-side summary table with objective and assignment metrics.
+### 9) Staggered starts (XYZ first)
 
-## Legacy Mode Compatibility
+Configuration:
 
-TODO: This is less important. You can move these legacy notes to the specific examples we are going to discuss. I imagine us having 6 to 8 examples and these legacy modes being integrated into the discussion of the examples.
+- `examples/config_shifted_b_first.yaml`
+- `examples/faculty_formulation.yaml`
 
-`mode=Mode.BUILDING_A_FIRST`, `mode=Mode.BUILDING_B_FIRST`, and
-`mode=Mode.NO_OFFSET` remain available with `FutureWarning`, but `movement` is
-the preferred interface for new code.
+Result summary: feasible, objective `94.9`, assignments `24`, requested assignments `23`, group slots `9`.
 
-## Legacy Mode Migration Guide
+![Staggered XYZ First Visitor View](_static/movement_staggered_b_first_visitor.png)
+![Staggered XYZ First Faculty View](_static/movement_staggered_b_first_faculty.png)
 
-Equivalent `movement` mappings:
+## Legacy Mode Mappings (Integrated Reference)
 
-- `Mode.BUILDING_A_FIRST`:
+Legacy modes are still available with `FutureWarning` and map to movement configs:
 
-```yaml
-movement:
-  policy: none
-  phase_slot:
-    BuildingA: 1
-    BuildingB: 2
-```
+- `Mode.BUILDING_A_FIRST` maps to `policy: none` with `phase_slot` offset (`ABC:1`, `XYZ:2`).
+- `Mode.BUILDING_B_FIRST` maps to `policy: none` with `phase_slot` offset (`ABC:2`, `XYZ:1`).
+- `Mode.NO_OFFSET` maps to `policy: travel_time` with a +1 inter-building lag matrix.
 
-- `Mode.BUILDING_B_FIRST`:
+Break nuance:
 
-```yaml
-movement:
-  policy: none
-  phase_slot:
-    BuildingA: 2
-    BuildingB: 1
-```
-
-- `Mode.NO_OFFSET`:
-
-```yaml
-movement:
-  policy: travel_time
-  phase_slot:
-    BuildingA: 1
-    BuildingB: 1
-  travel_slots:
-    BuildingA:
-      BuildingA: 0
-      BuildingB: 1
-    BuildingB:
-      BuildingA: 1
-      BuildingB: 0
-```
-
-For shifted absolute slot clocks, prefer:
-
-```yaml
-movement:
-  policy: nonoverlap_time
-  phase_slot:
-    BuildingA: 1
-    BuildingB: 2
-```
-
-TODO: Integrate this into the discussion of the examples.
-
-Break-behavior nuance:
-
-- Legacy `Mode.NO_OFFSET` implicitly enables break constraints by default.
-- Movement-only configs do **not** implicitly enable break constraints.
-- To match legacy `NO_OFFSET` break behavior, set `enforce_breaks=True` in
-  `schedule_visitors(...)` / `schedule_visitors_top_n(...)`.
+- Legacy `Mode.NO_OFFSET` implicitly enforces break constraints by default.
+- Movement-only configs do not imply breaks; set `enforce_breaks=True` if needed.
