@@ -16,10 +16,18 @@ The scheduler expects three inputs.
 
 ### Faculty catalog (`faculty_formulation.yaml`)
 
+```{literalinclude} ../examples/faculty_formulation.yaml
+:language: yaml
+```
+
 - Defines each faculty member's building, room, research areas, and status.
 - Example statuses: `active`, `legacy`, `external`.
 
 ### Run config (`config_formulation.yaml`)
+
+```{literalinclude} ../examples/config_formulation.yaml
+:language: yaml
+```
 
 - Defines slot times for two buildings.
 - Uses building names `ABC` and `XYZ`.
@@ -28,6 +36,11 @@ The scheduler expects three inputs.
 - Includes per-faculty availability conflicts.
 
 ### Visitor CSV (`data_formulation_visitors.csv`)
+
+```{literalinclude} ../examples/data_formulation_visitors.csv
+:language: text
+:lines: 1-7
+```
 
 - One row per visitor.
 - Ranked faculty preferences in `Prof1`, `Prof2`, ...
@@ -179,7 +192,7 @@ Repository examples:
 Comparison runner:
 
 ```bash
-python scripts/run_shifted_start_comparison.py
+python scripts/run_building_configuration_examples.py --slugs staggered_a_first staggered_b_first
 ```
 
 For full movement-policy details (one/two/three-building cases and travel-time

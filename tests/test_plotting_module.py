@@ -32,3 +32,9 @@ def test_slot2min_rejects_invalid_slot_labels(slot_label):
     """slot2min should fail with clear errors on malformed/non-increasing labels."""
     with pytest.raises(ValueError):
         plotting.slot2min(slot_label)
+
+
+def test_slot2min_rejects_non_string_input():
+    """slot2min should fail fast for non-string labels."""
+    with pytest.raises(ValueError, match="string"):
+        plotting.slot2min(125)  # type: ignore[arg-type]

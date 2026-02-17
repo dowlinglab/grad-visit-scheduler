@@ -46,9 +46,14 @@ Movement/staggered example configs:
 - `config_one_building.yaml`: one-building schedule on the large formulation visitor set.
 - `config_two_buildings_close.yaml`: two close buildings, no travel-time constraints.
 - `config_three_buildings_close.yaml`: three close buildings, no travel-time constraints.
+- `config_two_buildings_travel_delay.yaml`: two buildings with explicit one-slot inter-building travel lag.
+- `config_three_buildings_travel_delay.yaml`: three buildings with explicit one-slot inter-building travel lag.
 - `config_shifted_a_first.yaml`: staggered starts with Building A first.
 - `config_shifted_b_first.yaml`: staggered starts with Building B first.
 - `config_shifted_nonoverlap_auto.yaml`: shifted clocks with automatic non-overlap travel lags.
+- `config_shifted_abc_earlier_nonoverlap.yaml`: two shifted clocks (`ABC` starts earlier) using `nonoverlap_time`.
+- `config_shifted_xyz_earlier_nonoverlap.yaml`: two shifted clocks (`XYZ` starts earlier) using `nonoverlap_time`.
+- `config_three_buildings_shifted_nonoverlap.yaml`: three shifted clocks (`ABC`/`LMN`/`XYZ`) with no breaks.
 
 Companion faculty catalogs for generalized building demos:
 
@@ -58,8 +63,8 @@ Companion faculty catalogs for generalized building demos:
 Movement/staggered example scripts:
 
 - `../scripts/run_example.py`: two-building close-proximity solve.
-- `../scripts/run_building_configuration_examples.py`: one/two/three-building close-proximity comparison on the large dataset.
-- `../scripts/run_shifted_start_comparison.py`: A-first vs B-first performance comparison and plots.
+- `../scripts/run_building_configuration_examples.py`: unified comparison across all documented movement scenarios (including shifted/no-break examples) on the large dataset.
+- `../scripts/run_shifted_start_comparison.py`: compatibility wrapper for A-first vs B-first subset reporting.
 
 Formulation-focused base dataset:
 - `faculty_formulation.yaml`: six-faculty catalog (`Prof. A` to `Prof. F`).

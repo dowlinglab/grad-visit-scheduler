@@ -138,6 +138,16 @@ def test_compute_min_travel_lags_min_buffer_is_monotone():
             assert lag10[b_from][b_to] >= lag0[b_from][b_to]
 
 
+def test_compute_min_travel_lags_negative_buffer_raises():
+    """Negative min_buffer_minutes should raise a clear ValueError."""
+    times = {
+        "A": ["1:00-1:25", "1:30-1:55"],
+        "B": ["1:10-1:35", "1:40-2:05"],
+    }
+    with pytest.raises(ValueError, match="nonnegative"):
+        compute_min_travel_lags(times, min_buffer_minutes=-1)
+
+
 def test_compute_min_travel_lags_three_building_mixed_offsets_matrix():
     """Three-building mixed-offset deterministic sweep should produce valid lag matrices."""
     for offset_b in (0, 10, 20):

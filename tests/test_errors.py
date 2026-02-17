@@ -123,6 +123,27 @@ def test_missing_buildings_in_run_config_raises(tmp_path: Path):
         load_run_config(run_yaml)
 
 
+def test_empty_or_unequal_building_slot_lists_raise(tmp_path: Path):
+    """Reject zero-slot buildings and unequal slot counts."""
+    empty_run = tmp_path / "empty_run.yaml"
+    empty_run.write_text(
+        "buildings:\n"
+        "  BuildingA: []\n"
+        "  BuildingB: ['1:00-1:25']\n"
+    )
+    with pytest.raises(ValueError, match="at least one time slot"):
+        load_run_config(empty_run)
+
+    uneven_run = tmp_path / "uneven_run.yaml"
+    uneven_run.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:00-1:25', '1:30-1:55']\n"
+    )
+    with pytest.raises(ValueError, match="same number of time slots"):
+        load_run_config(uneven_run)
+
+
 def test_invalid_building_order_shape_raises(tmp_path: Path):
     """Raise when building_order is empty."""
     run_yaml = tmp_path / "run.yaml"
@@ -162,6 +183,41 @@ def test_invalid_movement_policy_raises(tmp_path: Path):
         load_run_config(run_yaml)
 
 
+def test_invalid_movement_config_shapes_raise(tmp_path: Path):
+    """Reject non-dict movement and invalid phase-slot shape/building."""
+    non_dict = tmp_path / "non_dict.yaml"
+    non_dict.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "movement: auto\n"
+    )
+    with pytest.raises(ValueError, match="movement"):
+        load_run_config(non_dict)
+
+    bad_phase_type = tmp_path / "bad_phase_type.yaml"
+    bad_phase_type.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "movement:\n"
+        "  policy: none\n"
+        "  phase_slot: 1\n"
+    )
+    with pytest.raises(ValueError, match="phase_slot"):
+        load_run_config(bad_phase_type)
+
+    bad_phase_building = tmp_path / "bad_phase_building.yaml"
+    bad_phase_building.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "movement:\n"
+        "  policy: none\n"
+        "  phase_slot:\n"
+        "    UnknownBuilding: 1\n"
+    )
+    with pytest.raises(ValueError, match="unknown building"):
+        load_run_config(bad_phase_building)
+
+
 def test_nonoverlap_time_with_explicit_travel_slots_raises(tmp_path: Path):
     """nonoverlap_time policy should not accept manual travel slot matrices."""
     run_yaml = tmp_path / "run.yaml"
@@ -197,6 +253,21 @@ def test_travel_time_allows_auto_travel_slots(tmp_path: Path):
     )
     cfg = load_run_config(run_yaml)
     assert cfg["movement"]["travel_slots"] == "auto"
+
+
+def test_invalid_travel_slots_type_raises(tmp_path: Path):
+    """travel_slots must be dict or 'auto' for travel-time policies."""
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(
+        "buildings:\n"
+        "  BuildingA: ['1:00-1:25']\n"
+        "  BuildingB: ['1:15-1:40']\n"
+        "movement:\n"
+        "  policy: travel_time\n"
+        "  travel_slots: 3\n"
+    )
+    with pytest.raises(ValueError, match="dictionary or 'auto'"):
+        load_run_config(run_yaml)
 
 
 def test_negative_min_buffer_minutes_raises(tmp_path: Path):
