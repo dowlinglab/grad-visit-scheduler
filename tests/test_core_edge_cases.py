@@ -13,6 +13,7 @@ import pytest
 import grad_visit_scheduler.core as core_mod
 from grad_visit_scheduler import Mode, Scheduler, Solver
 from grad_visit_scheduler.plotting import abbreviate_name
+from pyomo.opt import SolverStatus, TerminationCondition
 
 
 def _write_csv(path: Path, rows):
@@ -415,3 +416,195 @@ def test_docx_export_cell_run_fallback_branch(tmp_path: Path, monkeypatch):
 
     sol.export_visitor_docx(tmp_path / "fake.docx", include_breaks=False)
     assert _FakeParagraph.cell_add_run_calls > 0
+
+
+def test_scheduler_direct_movement_validation_branches(tmp_path: Path):
+    """Exercise direct Scheduler movement validation that bypasses config loader."""
+    csv_path = tmp_path / "v.csv"
+    _write_csv(csv_path, [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}])
+    times = {"BuildingA": ["1:00-1:25", "1:30-1:55"], "BuildingB": ["1:00-1:25", "1:30-1:55"]}
+    faculty_catalog = {
+        "Faculty A": {"building": "BuildingA", "room": "101", "areas": ["Area1"], "status": "active"},
+        "Faculty B": {"building": "BuildingB", "room": "201", "areas": ["Area1"], "status": "active"},
+    }
+
+    with pytest.raises(ValueError, match="Unsupported movement policy"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={"policy": "teleport"},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="movement.phase_slot"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={"policy": "none", "phase_slot": {"BuildingA": 0, "BuildingB": 1}},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="min_buffer_minutes"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={"policy": "travel_time", "min_buffer_minutes": -1},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="nonoverlap_time"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={
+                "policy": "nonoverlap_time",
+                "travel_slots": {"BuildingA": {"BuildingA": 0, "BuildingB": 1}},
+            },
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="dictionary or 'auto'"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={"policy": "travel_time", "travel_slots": "manual"},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="missing row"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={
+                "policy": "travel_time",
+                "travel_slots": {"BuildingA": {"BuildingA": 0, "BuildingB": 1}},
+            },
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="missing destination"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={
+                "policy": "travel_time",
+                "travel_slots": {
+                    "BuildingA": {"BuildingA": 0},
+                    "BuildingB": {"BuildingA": 1, "BuildingB": 0},
+                },
+            },
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    with pytest.raises(ValueError, match="nonnegative integers"):
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={
+                "policy": "travel_time",
+                "travel_slots": {
+                    "BuildingA": {"BuildingA": 0, "BuildingB": -1},
+                    "BuildingB": {"BuildingA": 1, "BuildingB": 0},
+                },
+            },
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+
+    # travel_slots omitted under travel_time should synthesize default lag matrix.
+    s_default = Scheduler(
+        times_by_building=times,
+        student_data_filename=str(csv_path),
+        movement={"policy": "travel_time"},
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+    assert s_default.travel_slots["BuildingA"]["BuildingB"] == 1
+    assert s_default.travel_slots["BuildingB"]["BuildingA"] == 1
+
+
+def test_scheduler_rejects_times_with_no_buildings_key(tmp_path: Path):
+    """Times mapping with only breaks should be rejected."""
+    csv_path = tmp_path / "v.csv"
+    _write_csv(csv_path, [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}])
+    with pytest.raises(ValueError, match="at least one building"):
+        Scheduler(
+            times_by_building={"breaks": [1]},
+            student_data_filename=str(csv_path),
+            movement={"policy": "none"},
+            solver=Solver.HIGHS,
+            faculty_catalog={"Faculty A": {"building": "BuildingA", "room": "101", "areas": ["Area1"], "status": "active"}},
+        )
+
+
+def test_none_policy_warning_truncates_many_risky_pairs(tmp_path: Path):
+    """Warning message should truncate long risky pair lists with ellipsis."""
+    csv_path = tmp_path / "v.csv"
+    _write_csv(csv_path, [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}])
+    times = {
+        "A": ["1:00-1:25", "1:30-1:55"],
+        "B": ["1:05-1:30", "1:35-2:00"],
+        "C": ["1:10-1:35", "1:40-2:05"],
+        "D": ["1:15-1:40", "1:45-2:10"],
+        "E": ["1:20-1:45", "1:50-2:15"],
+    }
+    faculty_catalog = {
+        "Faculty A": {"building": "A", "room": "101", "areas": ["Area1"], "status": "active"},
+    }
+    with pytest.warns(UserWarning) as w:
+        Scheduler(
+            times_by_building=times,
+            student_data_filename=str(csv_path),
+            movement={"policy": "none"},
+            solver=Solver.HIGHS,
+            faculty_catalog=faculty_catalog,
+        )
+    assert "..." in str(w[0].message)
+
+
+def test_gurobi_iis_prints_iis_entries_when_available(tmp_path: Path, monkeypatch, capsys):
+    """Cover GUROBI_IIS option setup, IIS suffix creation, and IIS print loop."""
+    s = _tiny_scheduler(tmp_path, solver=Solver.GUROBI_IIS)
+    fake_exe = tmp_path / "gurobi_ampl"
+    fake_exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    monkeypatch.setenv("GVS_GUROBI_IIS_EXECUTABLE", str(fake_exe))
+
+    class FakeOpt:
+        def __init__(self):
+            self.options = {}
+
+        def available(self, exception_flag=False):
+            return True
+
+        def solve(self, model, tee=False):
+            # Insert one IIS-marked component to exercise print loop lines.
+            first_y = next(model.y.values())
+            model.iis[first_y] = 1
+            return SimpleNamespace(
+                solver=SimpleNamespace(
+                    termination_condition=TerminationCondition.infeasible,
+                    status=SolverStatus.warning,
+                )
+            )
+
+    monkeypatch.setattr(core_mod.pyo, "SolverFactory", lambda *args, **kwargs: FakeOpt())
+    s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=2,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="iis_print",
+    )
+    out = capsys.readouterr().out
+    assert "IIS Results" in out
+    assert "y[" in out

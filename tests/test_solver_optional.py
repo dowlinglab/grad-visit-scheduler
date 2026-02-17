@@ -70,7 +70,14 @@ def _ensure_gurobi_iis_env():
 
 
 def _gurobi_iis_solver_ready() -> bool:
-    """Return whether executable is discoverable and solver interface is available."""
+    """Return whether executable is discoverable and solver interface is available.
+
+    Why this test gate exists:
+    GUROBI_IIS depends on external infrastructure (licensed Gurobi + AMPL
+    executable wiring), so unlike HiGHS/CBC coverage we cannot assume CI/local
+    environments can run it. This makes IIS tests inherently less robust and
+    more environment-dependent than other solver tests in this suite.
+    """
     _ensure_gurobi_iis_env()
     exe_path = _find_gurobi_iis_executable()
     if exe_path is None:
@@ -109,7 +116,7 @@ def _has_real_time_overlap(solution) -> bool:
     ],
 )
 def test_solver_solve_basic(solver_enum, solver_name):
-    """Solve the basic example when the selected solver is installed."""
+    """Solve basic example and validate objective-level regression signal."""
     if not _solver_available(solver_name):
         pytest.skip(f"Solver '{solver_name}' is not available")
 
@@ -121,7 +128,7 @@ def test_solver_solve_basic(solver_enum, solver_name):
         mode=Mode.NO_OFFSET,
         solver=solver_enum,
     )
-    s.schedule_visitors(
+    sol = s.schedule_visitors(
         group_penalty=0.1,
         min_visitors=0,
         max_visitors=4,
@@ -132,6 +139,10 @@ def test_solver_solve_basic(solver_enum, solver_name):
         run_name="test",
     )
     assert s.has_feasible_solution()
+    assert sol is not None
+    # We avoid asserting full assignments (multiple equivalent optima can exist),
+    # but objective value should remain stable for this benchmark instance.
+    assert sol.objective_value == pytest.approx(43.2, rel=1e-8, abs=1e-8)
     assert s.last_solution_set is None
     assert s.last_termination_condition in {TerminationCondition.optimal, TerminationCondition.feasible}
 
@@ -247,7 +258,15 @@ def test_solver_top_n_summary_helper_highs(tmp_path: Path):
 
 
 def test_solver_gurobi_iis_infeasible_path():
-    """Run GUROBI_IIS on an infeasible toy case when executable is available."""
+    """Run GUROBI_IIS on an infeasible toy case when executable is available.
+
+    Note on test strictness:
+    This test intentionally checks coarse IIS signals (presence of IIS entries
+    and key constraint families) instead of exact IIS contents. Exact IIS
+    membership can vary across solver versions/builds and environment setup,
+    so asserting a full IIS set would be brittle compared with our other
+    deterministic regression tests.
+    """
     if not _gurobi_iis_solver_ready():
         pytest.skip("GUROBI_IIS executable/backend is not available")
 
