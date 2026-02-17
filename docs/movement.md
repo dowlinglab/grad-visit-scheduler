@@ -131,6 +131,8 @@ TODO: Please explain why these results make sense -- because the buildings are c
 | Two buildings (close) | True | 110.9 | 30 | 30 | 13 |
 | Three buildings (close) | True | 110.9 | 30 | 30 | 13 |
 
+TODO: We want to look at a few other configurations: A. Two buildings with one time slot delay travel time between buildings. B. Three buildings with one time slot delay travel time between buildings. C. Two buildings where the first building starts 15 minutes earlier and 15 minutes (half time slot) is sufficient to move between buildings. D. Similar to case C, but the second build starts 15 minutes before the first building.
+
 ## Supported Patterns
 
 ### 1) One building
@@ -165,6 +167,8 @@ Use `policy: none` with one `phase_slot` entry per building.
 
 ## Staggered Starts (A First vs B First)
 
+TODO: This example needs to get integrated into the comparison table. This seems like additional example configurations.
+
 Staggered starts are now represented through `phase_slot`.
 
 - Building A first:
@@ -192,6 +196,8 @@ Repository configs:
 - [`examples/config_shifted_a_first.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_a_first.yaml)
 - [`examples/config_shifted_b_first.yaml`](https://github.com/dowlinglab/grad-visit-scheduler/blob/main/examples/config_shifted_b_first.yaml)
 
+TODO: The comparison runner should get updated to compare all of the configurations mentioned on this page.
+
 Comparison runner:
 
 ```bash
@@ -215,6 +221,10 @@ Results:
 | Building A first | True | 101.8 | 26 | 26 | 11 |
 | Building B first | True | 94.9 | 24 | 23 | 9 |
 
+TODO: Integrate this into early discussion of the different scenarios.
+
+TODO: Present the results for each scenario in a standardized way. I prefer describing each configuration and then showing that specific configuration results. This will be easier. 
+
 Visitor-view plots:
 
 ![Shifted A First Visitor View](_static/movement_shifted_a_first_visitor.png)
@@ -229,6 +239,8 @@ Faculty-view plots:
 
 ## Executable Comparison Across 1/2/3 Buildings
 
+TODO: This needs to get integrated into the discussion of difference scenarios.
+
 Run all close-proximity building-configuration examples (one, two, and three buildings)
 on the large formulation dataset:
 
@@ -239,6 +251,8 @@ python scripts/run_building_configuration_examples.py
 This prints a side-by-side summary table with objective and assignment metrics.
 
 ## Legacy Mode Compatibility
+
+TODO: This is less important. You can move these legacy notes to the specific examples we are going to discuss. I imagine us having 6 to 8 examples and these legacy modes being integrated into the discussion of the examples.
 
 `mode=Mode.BUILDING_A_FIRST`, `mode=Mode.BUILDING_B_FIRST`, and
 `mode=Mode.NO_OFFSET` remain available with `FutureWarning`, but `movement` is
@@ -294,6 +308,8 @@ movement:
     BuildingA: 1
     BuildingB: 2
 ```
+
+TODO: Integrate this into the discussion of the examples.
 
 Break-behavior nuance:
 

@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 project = "Graduate Visit Scheduler"
-author = "Dowling Lab"
+author = "Alexander Dowling"
 copyright = f"{datetime.now().year}, {author}"
 
 try:
