@@ -2034,7 +2034,8 @@ class Scheduler:
         for (s, f), fixed_slots in required_specific_by_pair.items():
             t = next(iter(fixed_slots))
             visitor_slot_forced[s, t] += 1
-            faculty_slot_forced[f, t] += 1
+            if (f, t) in faculty_slot_forced:
+                faculty_slot_forced[f, t] += 1
 
         for s in visitors:
             for t in slots:

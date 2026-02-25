@@ -347,6 +347,125 @@ def test_optional_bounds_are_enforced_in_model(tmp_path: Path):
     assert m.max_visitors_constraint["Faculty A"].upper == 1
 
 
+def test_require_break_slots_none_uses_all_slots(tmp_path: Path):
+    """slots=None should normalize to all configured scheduler slots."""
+    s = _build_scheduler(tmp_path)
+    s.require_break("Visitor 1", slots=None, min_breaks=1)
+    assert ("Visitor 1", tuple(s.time_slots), 1) in s._required_breaks
+
+
+def test_forbid_and_require_slot_contradiction_branches(tmp_path: Path):
+    """Exercise additional contradiction branches for forbid/require APIs."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A")
+    with pytest.raises(ValueError, match="required across all slots"):
+        s.forbid_meeting("Visitor 1", "Faculty A")
+    with pytest.raises(ValueError, match="required across all slots"):
+        s.forbid_meeting("Visitor 1", "Faculty A", time_slot=1)
+
+    s2 = _build_scheduler(tmp_path)
+    s2.require_meeting("Visitor 1", "Faculty A", time_slot=1)
+    with pytest.raises(ValueError, match="required at slot"):
+        s2.forbid_meeting("Visitor 1", "Faculty A")
+
+    s3 = _build_scheduler(tmp_path)
+    s3.forbid_meeting("Visitor 1", "Faculty A")
+    with pytest.raises(ValueError, match="forbidden across all slots"):
+        s3.require_meeting("Visitor 1", "Faculty A", time_slot=1)
+
+    s4 = _build_scheduler(tmp_path)
+    s4.forbid_meeting("Visitor 1", "Faculty A", time_slot=1)
+    with pytest.raises(ValueError, match="forbidden in that slot"):
+        s4.require_meeting("Visitor 1", "Faculty A", time_slot=1)
+
+
+def test_build_model_defensive_skips_for_non_model_entities(tmp_path: Path):
+    """Defensive model-injection branches should skip missing visitor/faculty keys."""
+    s = _build_scheduler(tmp_path)
+    s.add_external_faculty("Faculty C", available=[])  # in faculty dict, not in model faculty set
+    s.forbid_meeting("Visitor 1", "Faculty C")
+    s.forbid_meeting("Visitor 1", "Faculty C", time_slot=1)
+    s._required_meetings_all_slots.add(("Ghost Visitor", "Faculty C"))
+    s._required_meetings_by_slot.add(("Visitor 1", "Faculty C", 1))
+    s._required_breaks.add(("Ghost Visitor", (1, 2), 1))
+
+    s._build_model(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=4,
+        min_faculty=0,
+        max_group=1,
+        enforce_breaks=False,
+    )
+    assert hasattr(s.model, "user_hard_constraints")
+
+
+def test_collect_presolve_issues_additional_edge_paths(tmp_path: Path):
+    """Cover remaining pre-solve issue-collector branches with explicit states."""
+    # unavailable faculty with required-any and required-specific (including duplicate slots)
+    s = _build_scheduler(tmp_path)
+    s.add_external_faculty("Faculty C", available=[])
+    s._required_meetings_all_slots.add(("Visitor 1", "Faculty C"))
+    s._required_meetings_by_slot.add(("Visitor 1", "Faculty C", 1))
+    s._required_meetings_by_slot.add(("Visitor 1", "Faculty C", 2))
+    s.set_faculty_meeting_bounds("Faculty C", min_meetings=1, max_meetings=2)
+    issues = s._collect_presolve_hard_constraint_issues(
+        min_visitors=0, max_visitors=4, min_faculty=0, max_group=1
+    )
+    text = "\n".join(issues)
+    assert "has no available slots" in text
+    assert "required in multiple slots" in text
+    assert "set_faculty_meeting_bounds" in text
+
+    # required-any candidate filtering branches: skip due specific pair, visitor slot forced, faculty slot forced
+    s2 = _build_scheduler(tmp_path)
+    s2._required_meetings_by_slot.add(("Visitor 1", "Faculty B", 1))  # visitor slot forced
+    s2._required_meetings_by_slot.add(("Visitor 2", "Faculty A", 2))  # faculty slot forced
+    s2._required_meetings_all_slots.add(("Visitor 1", "Faculty A"))
+    s2._required_meetings_all_slots.add(("Visitor 1", "Faculty B"))
+    s2._required_meetings_by_slot.add(("Visitor 1", "Faculty B", 2))  # same pair in specific => continue branch
+    issues2 = s2._collect_presolve_hard_constraint_issues(
+        min_visitors=0, max_visitors=4, min_faculty=0, max_group=1
+    )
+    assert any("no feasible slot remains" in msg for msg in issues2)
+
+    # impossible visitor min due breaks (min > computed upper)
+    s3 = _build_scheduler(tmp_path)
+    s3.set_visitor_meeting_bounds("Visitor 1", min_meetings=1, max_meetings=None)
+    s3.require_break("Visitor 1", slots=[1, 2], min_breaks=2)
+    issues3 = s3._collect_presolve_hard_constraint_issues(
+        min_visitors=0, max_visitors=4, min_faculty=0, max_group=1
+    )
+    assert any("Visitor 'Visitor 1' has min required meetings" in msg for msg in issues3)
+
+    # invalid effective bounds via direct internal mutation (API intentionally blocks this)
+    s4 = _build_scheduler(tmp_path)
+    s4._visitor_meeting_bounds["Visitor 1"] = {"min_meetings": 2, "max_meetings": 1}
+    s4._faculty_meeting_bounds["Faculty A"] = {"min_meetings": 2, "max_meetings": 1}
+    issues4 = s4._collect_presolve_hard_constraint_issues(
+        min_visitors=0, max_visitors=4, min_faculty=0, max_group=1
+    )
+    assert any("Invalid effective visitor bounds" in msg for msg in issues4)
+    assert any("Invalid effective faculty bounds" in msg for msg in issues4)
+
+    # faculty min above feasible upper bound
+    s5 = _build_scheduler(tmp_path)
+    s5.set_faculty_meeting_bounds("Faculty A", min_meetings=3, max_meetings=4)
+    issues5 = s5._collect_presolve_hard_constraint_issues(
+        min_visitors=0, max_visitors=4, min_faculty=0, max_group=1
+    )
+    assert any("Faculty 'Faculty A' has min required meetings" in msg for msg in issues5)
+
+    # unavailable faculty required-any without specific requirement should flow through _allowed_slots early return
+    s6 = _build_scheduler(tmp_path)
+    s6.add_external_faculty("Faculty C", available=[])
+    s6._required_meetings_all_slots.add(("Visitor 1", "Faculty C"))
+    issues6 = s6._collect_presolve_hard_constraint_issues(
+        min_visitors=0, max_visitors=4, min_faculty=0, max_group=1
+    )
+    assert any("Cannot satisfy require_meeting('Visitor 1', 'Faculty C')" in msg for msg in issues6)
+
+
 def test_integration_solve_enforces_hard_constraints(tmp_path: Path):
     """Solved schedule should satisfy all added hard constraints."""
     if not _highs_available():
