@@ -25,7 +25,10 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
     enable IIS/manual model inspection.
 - New tests for hard-constraint API behavior and integration solve enforcement:
   - `tests/test_hard_constraints_api.py`.
-- API and quickstart documentation updates with advanced hard-constraint examples.
+- New advanced docs page:
+  - `docs/advanced_customization.md`.
+- Quickstart/API/README docs updated to link to the advanced page and keep
+  baseline quickstart content focused on core workflows.
 
 ## [0.3.1] - 2026-02-17
 

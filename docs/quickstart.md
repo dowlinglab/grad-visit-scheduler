@@ -92,64 +92,10 @@ Common options on `schedule_visitors(...)`:
 - `min_faculty`: minimum meetings required per visitor.
 - `max_group`: cap on simultaneous visitors in one faculty meeting.
 - `enforce_breaks`: enforce break-window constraints.
-- `debug_infeasible`: if `True`, build the model before raising pre-solve
-  contradiction errors so advanced users can inspect `s.model`.
 - `tee`: print solver output for debugging.
 
-## 3.1) Add visitor-specific hard constraints
-
-Use these APIs before `schedule_visitors(...)` to force or forbid specific outcomes:
-
-```python
-# 1) forbid_meeting(visitor, faculty, time_slot=None)
-s.forbid_meeting("Visitor 1", "Prof. C")         # forbid all slots
-s.forbid_meeting("Visitor 2", "Prof. A", 3)      # forbid only slot 3
-
-# 2) require_meeting(visitor, faculty, time_slot=None)
-s.require_meeting("Visitor 3", "Prof. B")        # require exactly once across all slots
-s.require_meeting("Visitor 4", "Prof. D", 2)     # require slot 2 specifically
-
-# 3) require_break(visitor, slots=None, min_breaks=1)
-s.require_break("Visitor 5")                     # at least one break in all slots
-s.require_break("Visitor 6", slots=[2, 3], min_breaks=1)
-```
-
-These are hard MILP constraints (not preference weights).
-
-### Optional per-entity meeting bounds
-
-When global meeting bounds are too strict for one person, use per-entity
-overrides:
-
-```python
-# Visitor-specific override (None => use global defaults)
-s.set_visitor_meeting_bounds("Visitor 1", min_meetings=1, max_meetings=2)
-s.set_visitor_meeting_bounds("Visitor 2", min_meetings=None, max_meetings=None)  # clear override
-
-# Faculty-specific override (None => use global defaults)
-s.set_faculty_meeting_bounds("Prof. A", min_meetings=1, max_meetings=4)
-s.set_faculty_meeting_bounds("Prof. B", min_meetings=None, max_meetings=None)  # clear override
-```
-
-Override precedence:
-
-- Visitor bounds override global `min_faculty` for that visitor.
-- Faculty bounds override global `min_visitors` / `max_visitors` for that faculty.
-- Hard constraints (`require_*`, `forbid_*`) remain hard.
-
-Pre-solve checks run immediately before solving and raise `ValueError` on
-obvious contradictions. Error messages suggest `set_visitor_meeting_bounds(...)`
-or `set_faculty_meeting_bounds(...)` when applicable.
-
-For expert debugging, keep model construction even when pre-checks fail:
-
-```python
-s.schedule_visitors(
-    min_faculty=2,
-    debug_infeasible=True,  # build model before raising pre-solve ValueError
-)
-# If this raises, s.model is still available for IIS/manual inspection.
-```
+For advanced hard constraints, per-entity bounds, and debug/infeasibility
+workflows, see [Advanced Customization](advanced_customization.md).
 
 ## 4) Inspect and export solutions
 

@@ -147,16 +147,8 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.
 
-Visitor-specific hard constraints and optional per-entity bounds:
-
-```python
-s.forbid_meeting("Visitor 1", "Prof. A", time_slot=2)
-s.require_meeting("Visitor 2", "Prof. B")
-s.require_break("Visitor 3", slots=[2, 3], min_breaks=1)
-
-s.set_visitor_meeting_bounds("Visitor 3", min_meetings=1, max_meetings=2)
-s.set_faculty_meeting_bounds("Prof. B", min_meetings=1, max_meetings=4)
-```
+For advanced hard constraints, per-entity bounds, pre-solve checks, and debug
+infeasibility workflows, see [`docs/advanced_customization.md`](docs/advanced_customization.md).
 
 To generate multiple ranked schedules, use no-good cuts:
 

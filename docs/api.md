@@ -52,21 +52,8 @@ This raises `RuntimeError` if no feasible solution is loaded.
 - `set_visitor_meeting_bounds(visitor, min_meetings=None, max_meetings=None)`
 - `set_faculty_meeting_bounds(faculty, min_meetings=None, max_meetings=None)`
 
-Example:
-
-```python
-s.forbid_meeting("Visitor 1", "Prof. A", time_slot=2)
-s.require_meeting("Visitor 2", "Prof. B")
-s.require_break("Visitor 3", slots=[2, 3], min_breaks=1)
-```
-
-Each call adds a hard MILP constraint. Duplicate calls are idempotent.
-Bounds APIs are optional per-entity overrides; `None` means "use global
-defaults". Pre-solve checks run immediately before solve and raise clear
-`ValueError` messages for obvious contradictions, including suggestions for
-these optional bound APIs. Set `debug_infeasible=True` on solve methods to
-build the model before raising pre-solve errors, which supports IIS/manual
-inspection workflows.
+See [Advanced Customization](advanced_customization.md) for detailed examples,
+override precedence, pre-solve checks, and `debug_infeasible` workflows.
 
 ## Top-N Review Helper
 
