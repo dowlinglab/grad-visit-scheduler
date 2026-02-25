@@ -6,6 +6,8 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-25
+
 ### Added
 - New visitor-specific hard-constraint APIs on `Scheduler`:
   - `forbid_meeting(visitor, faculty, time_slot=None)`
