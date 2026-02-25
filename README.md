@@ -143,8 +143,12 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `min_faculty`: minimum number of faculty each visitor must meet.
 - `max_group`: maximum size of a meeting group at any time slot.
 - `enforce_breaks`: force breaks for visitors and faculty during the configured break window.
+- `debug_infeasible`: if `True`, build the model before raising pre-solve contradiction errors (useful for IIS/manual inspection of `s.model`).
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.
+
+For advanced hard constraints, per-entity bounds, pre-solve checks, and debug
+infeasibility workflows, see [`docs/advanced_customization.md`](docs/advanced_customization.md).
 
 To generate multiple ranked schedules, use no-good cuts:
 

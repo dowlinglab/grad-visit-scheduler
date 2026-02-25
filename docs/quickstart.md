@@ -94,6 +94,9 @@ Common options on `schedule_visitors(...)`:
 - `enforce_breaks`: enforce break-window constraints.
 - `tee`: print solver output for debugging.
 
+For advanced hard constraints, per-entity bounds, and debug/infeasibility
+workflows, see [Advanced Customization](advanced_customization.md).
+
 ## 4) Inspect and export solutions
 
 Schedule plots from this example:

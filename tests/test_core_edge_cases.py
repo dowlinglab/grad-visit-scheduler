@@ -608,3 +608,35 @@ def test_gurobi_iis_prints_iis_entries_when_available(tmp_path: Path, monkeypatc
     out = capsys.readouterr().out
     assert "IIS Results" in out
     assert "y[" in out
+
+
+def test_gurobi_solver_branch_uses_gurobi_factory(tmp_path: Path, monkeypatch):
+    """Cover Solver.GUROBI branch selection without requiring Gurobi install."""
+    s = _tiny_scheduler(tmp_path, solver=Solver.GUROBI)
+    s._build_model(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=2,
+        min_faculty=0,
+        max_group=1,
+        enforce_breaks=False,
+    )
+
+    calls = []
+
+    class FakeOpt:
+        def solve(self, model, tee=False):
+            return SimpleNamespace(
+                solver=SimpleNamespace(
+                    termination_condition=TerminationCondition.infeasible,
+                    status=SolverStatus.warning,
+                )
+            )
+
+    def _fake_solver_factory(name, *args, **kwargs):
+        calls.append(name)
+        return FakeOpt()
+
+    monkeypatch.setattr(core_mod.pyo, "SolverFactory", _fake_solver_factory)
+    s._solve_model(tee=False)
+    assert "gurobi" in calls
