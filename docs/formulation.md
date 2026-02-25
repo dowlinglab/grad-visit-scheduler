@@ -22,6 +22,8 @@ This table maps the mathematical symbols to the exact Pyomo components in the co
 | $q_f$ | `m.faculty_too_many_meetings[f]` | Overload indicator |
 | $\beta_{skt}$ | `m.in_building[s, k, t]` | Visitor in building $k$ at slot $t$ (travel policies) |
 | $r_{ft}$ | `m.faculty_breaks[f, t]` | Faculty break indicator |
+| $\underline{L}_s,\overline{U}_s$ | `set_visitor_meeting_bounds(...)` + `min_faculty` | Effective visitor min/max meetings |
+| $\underline{L}_f,\overline{U}_f$ | `set_faculty_meeting_bounds(...)` + `min_visitors/max_visitors` | Effective faculty min/max meetings |
 
 ## Worked Example Dataset
 
@@ -84,6 +86,8 @@ Faculty availability conflicts in this example:
 - $L_f$: minimum visitors per faculty (`min_visitors`)
 - $U_f$: maximum visitors per faculty (`max_visitors`)
 - $L_s$: minimum faculty meetings per visitor (`min_faculty`)
+- $\underline{L}_s,\overline{U}_s$: effective visitor bounds after optional per-visitor overrides
+- $\underline{L}_f,\overline{U}_f$: effective faculty bounds after optional per-faculty overrides
 - $G$: maximum group size in a faculty-time meeting (`max_group`)
 - $a_{ft} \in \{0,1\}$: 1 if faculty $f$ is available at slot $t$
 
@@ -121,15 +125,15 @@ $$
 
 Meetings can only occur when faculty are available.
 
-### 2. Faculty minimum and maximum total meetings
+### 2. Faculty minimum and maximum total meetings (with optional overrides)
 
 $$
-\sum_{s \in \mathcal{S}} \sum_{t \in \mathcal{T}} y_{sft} \ge L_f
+\sum_{s \in \mathcal{S}} \sum_{t \in \mathcal{T}} y_{sft} \ge \underline{L}_f
 \quad \forall f
 $$
 
 $$
-\sum_{s \in \mathcal{S}} \sum_{t \in \mathcal{T}} y_{sft} \le U_f
+\sum_{s \in \mathcal{S}} \sum_{t \in \mathcal{T}} y_{sft} \le \overline{U}_f
 \quad \forall f
 $$
 
@@ -140,15 +144,23 @@ $$
 \quad \forall s,t
 $$
 
-### 4. Visitor minimum total meetings
+### 4. Visitor minimum and optional maximum total meetings
 
 $$
 \sum_{f \in \mathcal{F}} \sum_{t \in \mathcal{T}} y_{sft}
-\ge \min\left(L_s, \left|\mathcal{T}_s^{\text{avail}}\right|\right)
+\ge \underline{L}_s
 \quad \forall s
 $$
 
-The implemented lower bound is clipped by each visitor's own availability window.
+The default lower bound is $\underline{L}_s=\min\left(L_s,\left|\mathcal{T}_s^{\text{avail}}\right|\right)$, then overridden by `set_visitor_meeting_bounds` when provided.
+
+When a visitor-specific maximum is configured:
+
+$$
+\sum_{f \in \mathcal{F}} \sum_{t \in \mathcal{T}} y_{sft}
+\le \overline{U}_s
+\quad \forall s \text{ with override}
+$$
 
 ### 5. Visitor meets same faculty at most once
 
@@ -256,6 +268,42 @@ y_{sft} = 0
 \quad \forall (s,t) \text{ not available to visitor } s,\; \forall f
 $$
 
+### 14. User-specified visitor/faculty hard constraints (optional)
+
+The APIs `forbid_meeting`, `require_meeting`, and `require_break` add explicit hard constraints:
+
+All-slot forbid (`forbid_meeting(s,f)`):
+
+$$
+y_{sft}=0 \quad \forall t \in \mathcal{T}
+$$
+
+Slot-specific forbid (`forbid_meeting(s,f,t^\*)`):
+
+$$
+y_{sf t^\*}=0
+$$
+
+All-slot require (`require_meeting(s,f)`):
+
+$$
+\sum_{t \in \mathcal{T}} y_{sft}=1
+$$
+
+Slot-specific require (`require_meeting(s,f,t^\*)`):
+
+$$
+y_{sf t^\*}=1
+$$
+
+Required breaks (`require_break(s,\mathcal{T}',b)`):
+
+$$
+\sum_{f \in \mathcal{F}}\sum_{t\in\mathcal{T}'} y_{sft}\le |\mathcal{T}'|-b
+$$
+
+where $b$ is `min_breaks`.
+
 ## Top-N No-Good Cuts (Optional Multi-Solution Extension)
 
 When generating ranked alternatives, the model adds one no-good cut after each
@@ -281,6 +329,13 @@ This enforces that at least one binary variable differs from solution $k$.
 - Constraint activation depends on movement policy and `enforce_breaks` exactly as documented above.
 - Legacy mode-specific movement constraints are superseded by the
   `movement.phase_slot` and `movement.travel_slots` formulation above.
+- When advanced user hard constraints or per-entity bounds are configured,
+  pre-solve consistency checks run via `_run_presolve_hard_constraint_checks`.
+  These checks catch obvious contradictions before solver execution and raise
+  clear `ValueError` messages.
+- `debug_infeasible=False` (default): fail fast before model build.
+- `debug_infeasible=True`: build model first, then raise pre-solve errors so
+  advanced users can inspect `s.model` (for example before IIS workflows).
 
 ## Example Solutions
 
