@@ -757,6 +757,8 @@ class Scheduler:
         self._required_meetings_all_slots = set()
         self._required_meetings_by_slot = set()
         self._required_breaks = set()
+        self._visitor_meeting_bounds = {}
+        self._faculty_meeting_bounds = {}
 
     def _validate_visitor_name(self, visitor):
         """Validate and return visitor name."""
@@ -795,6 +797,39 @@ class Scheduler:
             raise ValueError("slots must contain at least one time slot.")
         return tuple(sorted(set(slots_out)))
 
+    def _validate_optional_nonnegative_int(self, value, field_name):
+        """Validate optional nonnegative integer and return normalized value."""
+        if value is None:
+            return None
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} must be a nonnegative integer or None.")
+        if value < 0:
+            raise ValueError(f"{field_name} must be a nonnegative integer or None.")
+        return value
+
+    def _effective_visitor_bounds(self, visitor, global_min_faculty):
+        """Return effective (min_meetings, max_meetings) for one visitor."""
+        override = self._visitor_meeting_bounds.get(visitor, {})
+        min_override = override.get("min_meetings")
+        max_override = override.get("max_meetings")
+        if min_override is None:
+            min_meetings = min(int(global_min_faculty), len(self.students_available[visitor]))
+        else:
+            min_meetings = int(min_override)
+        max_meetings = None if max_override is None else int(max_override)
+        return min_meetings, max_meetings
+
+    def _effective_faculty_bounds(self, faculty, global_min_visitors, global_max_visitors):
+        """Return effective (min_meetings, max_meetings) for one faculty."""
+        override = self._faculty_meeting_bounds.get(faculty, {})
+        min_override = override.get("min_meetings")
+        max_override = override.get("max_meetings")
+        min_meetings = int(global_min_visitors) if min_override is None else int(min_override)
+        max_meetings = int(global_max_visitors) if max_override is None else int(max_override)
+        return min_meetings, max_meetings
+
     def _meeting_feasible_slots(self, visitor, faculty):
         """Return slots where visitor/faculty meeting could occur before user hard constraints."""
         faculty_avail = set(self.faculty[faculty]["avail"])
@@ -819,6 +854,76 @@ class Scheduler:
                     f"{required_specific} slot-specific required meetings fall in slots {list(slots)}, "
                     f"but require_break allows at most {max_meetings_in_slots} meetings there."
                 )
+
+    def set_visitor_meeting_bounds(self, visitor, min_meetings=None, max_meetings=None):
+        """Set optional visitor-specific meeting-count bounds.
+
+        Parameters
+        ----------
+        visitor:
+            Visitor name from the loaded CSV.
+        min_meetings:
+            Optional override for the visitor minimum meeting count. If ``None``,
+            the global ``min_faculty`` value is used.
+        max_meetings:
+            Optional override for the visitor maximum meeting count. If ``None``,
+            no visitor-specific maximum is enforced.
+
+        Notes
+        -----
+        Visitor-specific overrides take precedence over global bounds.
+        Passing both arguments as ``None`` clears the visitor override and
+        restores global-default behavior.
+        """
+        visitor = self._validate_visitor_name(visitor)
+        min_meetings = self._validate_optional_nonnegative_int(min_meetings, "min_meetings")
+        max_meetings = self._validate_optional_nonnegative_int(max_meetings, "max_meetings")
+        if min_meetings is not None and max_meetings is not None and min_meetings > max_meetings:
+            raise ValueError(
+                f"Invalid visitor bounds for '{visitor}': min_meetings={min_meetings} exceeds max_meetings={max_meetings}."
+            )
+        if min_meetings is None and max_meetings is None:
+            self._visitor_meeting_bounds.pop(visitor, None)
+            return
+        self._visitor_meeting_bounds[visitor] = {
+            "min_meetings": min_meetings,
+            "max_meetings": max_meetings,
+        }
+
+    def set_faculty_meeting_bounds(self, faculty, min_meetings=None, max_meetings=None):
+        """Set optional faculty-specific meeting-count bounds.
+
+        Parameters
+        ----------
+        faculty:
+            Faculty name from the active faculty catalog.
+        min_meetings:
+            Optional override for the faculty minimum meeting count. If ``None``,
+            the global ``min_visitors`` value is used.
+        max_meetings:
+            Optional override for the faculty maximum meeting count. If ``None``,
+            the global ``max_visitors`` value is used.
+
+        Notes
+        -----
+        Faculty-specific overrides take precedence over global bounds.
+        Passing both arguments as ``None`` clears the faculty override and
+        restores global-default behavior.
+        """
+        faculty = self._validate_faculty_name(faculty)
+        min_meetings = self._validate_optional_nonnegative_int(min_meetings, "min_meetings")
+        max_meetings = self._validate_optional_nonnegative_int(max_meetings, "max_meetings")
+        if min_meetings is not None and max_meetings is not None and min_meetings > max_meetings:
+            raise ValueError(
+                f"Invalid faculty bounds for '{faculty}': min_meetings={min_meetings} exceeds max_meetings={max_meetings}."
+            )
+        if min_meetings is None and max_meetings is None:
+            self._faculty_meeting_bounds.pop(faculty, None)
+            return
+        self._faculty_meeting_bounds[faculty] = {
+            "min_meetings": min_meetings,
+            "max_meetings": max_meetings,
+        }
 
     def forbid_meeting(self, visitor, faculty, time_slot=None):
         """Hard-forbid a visitor/faculty meeting in one slot or all slots.
@@ -1496,6 +1601,7 @@ class Scheduler:
         min_faculty=0,
         max_group=2,
         enforce_breaks=False,
+        debug_infeasible=False,
         tee=False,
         run_name='',
     ):
@@ -1517,6 +1623,11 @@ class Scheduler:
         enforce_breaks:
             If ``True``, enforce explicit break constraints regardless of
             movement policy.
+        debug_infeasible:
+            If ``False`` (default), run pre-solve consistency checks before
+            model construction and fail fast on obvious contradictions.
+            If ``True``, build the model first, then run checks so advanced
+            users can inspect ``self.model`` after a raised pre-solve error.
         tee:
             If ``True``, stream solver output.
         run_name:
@@ -1537,8 +1648,23 @@ class Scheduler:
             "min_faculty": min_faculty,
             "max_group": max_group,
             "enforce_breaks": enforce_breaks,
+            "debug_infeasible": debug_infeasible,
         }
+        self._run_presolve_hard_constraint_checks(
+            min_visitors=min_visitors,
+            max_visitors=max_visitors,
+            min_faculty=min_faculty,
+            max_group=max_group,
+            raise_on_issue=not debug_infeasible,
+        )
         self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
+        self._run_presolve_hard_constraint_checks(
+            min_visitors=min_visitors,
+            max_visitors=max_visitors,
+            min_faculty=min_faculty,
+            max_group=max_group,
+            raise_on_issue=debug_infeasible,
+        )
         self._solve_model(tee)
         self.run_name = run_name
         self.last_solution_set = None
@@ -1555,6 +1681,7 @@ class Scheduler:
         min_faculty=0,
         max_group=2,
         enforce_breaks=False,
+        debug_infeasible=False,
         tee=False,
         run_name='',
     ):
@@ -1573,9 +1700,24 @@ class Scheduler:
             "min_faculty": min_faculty,
             "max_group": max_group,
             "enforce_breaks": enforce_breaks,
+            "debug_infeasible": debug_infeasible,
             "n_solutions": n_solutions,
         }
+        self._run_presolve_hard_constraint_checks(
+            min_visitors=min_visitors,
+            max_visitors=max_visitors,
+            min_faculty=min_faculty,
+            max_group=max_group,
+            raise_on_issue=not debug_infeasible,
+        )
         self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
+        self._run_presolve_hard_constraint_checks(
+            min_visitors=min_visitors,
+            max_visitors=max_visitors,
+            min_faculty=min_faculty,
+            max_group=max_group,
+            raise_on_issue=debug_infeasible,
+        )
         self.run_name = run_name
 
         solutions = []
@@ -1693,6 +1835,8 @@ class Scheduler:
             return sum(m.utility[s] for s in m.visitors) - m.penalty * sum(m.cost[f] for f in m.faculty) - 3*m.penalty * sum(m.faculty_too_many_meetings[f] for f in m.faculty)
         
         # CONSTRAINTS
+        visitor_bounds = {s: self._effective_visitor_bounds(s, min_faculty) for s in m.visitors}
+        faculty_bounds = {f: self._effective_faculty_bounds(f, min_visitors, max_visitors) for f in m.faculty}
 
         # no meeting is possible if a faculty member is unavailable
         @m.Constraint(m.visitors, m.faculty, m.time)
@@ -1730,11 +1874,13 @@ class Scheduler:
         
         @m.Constraint(m.faculty)
         def min_visitors_constraint(m, f):
-            return sum(m.y[s, f, t] for s in m.visitors for t in m.time) >= min_visitors
+            min_bound, _ = faculty_bounds[f]
+            return sum(m.y[s, f, t] for s in m.visitors for t in m.time) >= min_bound
         
         @m.Constraint(m.faculty)
         def max_visitors_constraint(m, f):
-            return sum(m.y[s, f, t] for s in m.visitors for t in m.time) <= max_visitors
+            _, max_bound = faculty_bounds[f]
+            return sum(m.y[s, f, t] for s in m.visitors for t in m.time) <= max_bound
     
         # no student can be in more than one meeting at time
         @m.Constraint(m.visitors, m.time)
@@ -1744,7 +1890,15 @@ class Scheduler:
         # all students meet a minimum number of faculty
         @m.Constraint(m.visitors)
         def min_faculty(m, s):
-            return sum(m.y[s, f, t] for f in m.faculty for t in m.time) >= np.min([min_faculty, len(self.students_available[s]) ])
+            min_bound, _ = visitor_bounds[s]
+            return sum(m.y[s, f, t] for f in m.faculty for t in m.time) >= min_bound
+
+        @m.Constraint(m.visitors)
+        def max_faculty(m, s):
+            _, max_bound = visitor_bounds[s]
+            if max_bound is None:
+                return pyo.Constraint.Skip
+            return sum(m.y[s, f, t] for f in m.faculty for t in m.time) <= max_bound
 
         # no student meets a faculty member more than once
         @m.Constraint(m.visitors, m.faculty)
@@ -1822,6 +1976,184 @@ class Scheduler:
                         m.y[s,f,t].fix(0)
 
         self.model = m
+
+    def _collect_presolve_hard_constraint_issues(self, min_visitors, max_visitors, min_faculty, max_group):
+        """Return a list of obvious hard-constraint contradictions."""
+        has_user_overrides = any(
+            [
+                len(self._forbidden_meetings_all_slots) > 0,
+                len(self._forbidden_meetings_by_slot) > 0,
+                len(self._required_meetings_all_slots) > 0,
+                len(self._required_meetings_by_slot) > 0,
+                len(self._required_breaks) > 0,
+                len(self._visitor_meeting_bounds) > 0,
+                len(self._faculty_meeting_bounds) > 0,
+            ]
+        )
+        if not has_user_overrides:
+            return []
+
+        issues = []
+        faculty_available = {f for f in self.faculty if len(self.faculty[f]["avail"]) > 0}
+        visitors = list(self.student_data.index)
+        slots = set(self.time_slots)
+
+        required_specific_by_pair = {}
+        for s, f, t in self._required_meetings_by_slot:
+            required_specific_by_pair.setdefault((s, f), set()).add(t)
+        required_any_pairs = set(self._required_meetings_all_slots)
+        required_pairs = set(required_specific_by_pair.keys()).union(required_any_pairs)
+
+        for s, f in required_any_pairs:
+            if f not in faculty_available:
+                issues.append(
+                    f"Cannot satisfy require_meeting('{s}', '{f}'): faculty '{f}' has no available slots. "
+                    "Update faculty availability or remove the requirement."
+                )
+        for (s, f), fixed_slots in required_specific_by_pair.items():
+            if f not in faculty_available:
+                issues.append(
+                    f"Cannot satisfy require_meeting('{s}', '{f}', time_slot=...): "
+                    f"faculty '{f}' has no available slots."
+                )
+            if len(fixed_slots) > 1:
+                issues.append(
+                    f"Contradictory hard constraints for ({s}, {f}): required in multiple slots {sorted(fixed_slots)} "
+                    "but each visitor/faculty pair can meet at most once."
+                )
+
+        for f, bound in self._faculty_meeting_bounds.items():
+            if f not in faculty_available and bound.get("min_meetings") not in (None, 0):
+                issues.append(
+                    f"Faculty '{f}' has min_meetings={bound['min_meetings']} but no available slots. "
+                    "Set min_meetings=0 via set_faculty_meeting_bounds(...) or add availability."
+                )
+
+        visitor_slot_forced = {(s, t): 0 for s in visitors for t in slots}
+        faculty_slot_forced = {(f, t): 0 for f in faculty_available for t in slots}
+        for (s, f), fixed_slots in required_specific_by_pair.items():
+            t = next(iter(fixed_slots))
+            visitor_slot_forced[s, t] += 1
+            faculty_slot_forced[f, t] += 1
+
+        for s in visitors:
+            for t in slots:
+                if visitor_slot_forced[s, t] > 1:
+                    issues.append(
+                        f"Visitor '{s}' is required to attend multiple meetings in slot {t}. "
+                        "No-simultaneous-meeting constraint allows at most one. "
+                        "Adjust require_meeting(...) rules or use set_visitor_meeting_bounds(...) to relax bounds."
+                    )
+        for f in faculty_available:
+            for t in slots:
+                if faculty_slot_forced[f, t] > max_group:
+                    issues.append(
+                        f"Faculty '{f}' has {faculty_slot_forced[f, t]} slot-specific required meetings at slot {t}, "
+                        f"which exceeds max_group={max_group}. "
+                        "Adjust require_meeting(...) rules, increase max_group, or use set_faculty_meeting_bounds(...)."
+                    )
+
+        def _allowed_slots(s, f):
+            if f not in faculty_available:
+                return set()
+            allowed = set(self._meeting_feasible_slots(s, f))
+            if (s, f) in self._forbidden_meetings_all_slots:
+                return set()
+            allowed -= {t for (ss, ff, t) in self._forbidden_meetings_by_slot if ss == s and ff == f}
+            return allowed
+
+        for s, f in required_any_pairs:
+            if (s, f) in required_specific_by_pair:
+                continue
+            candidates = []
+            for t in _allowed_slots(s, f):
+                if visitor_slot_forced[s, t] > 0:
+                    continue
+                if faculty_slot_forced.get((f, t), 0) >= max_group:
+                    continue
+                candidates.append(t)
+            if len(candidates) == 0:
+                issues.append(
+                    f"Cannot satisfy require_meeting('{s}', '{f}') with current hard constraints: "
+                    "no feasible slot remains after fixed slot requirements and max_group limits. "
+                    "Adjust require_meeting/forbid_meeting rules, increase max_group, or relax bounds via "
+                    "set_visitor_meeting_bounds(...) / set_faculty_meeting_bounds(...)."
+                )
+
+        for s in visitors:
+            min_s, max_s = self._effective_visitor_bounds(s, min_faculty)
+            if max_s is not None and min_s > max_s:
+                issues.append(
+                    f"Invalid effective visitor bounds for '{s}': min={min_s} exceeds max={max_s}. "
+                    "Adjust set_visitor_meeting_bounds(...)."
+                )
+            required_for_s = sum(1 for (ss, _) in required_pairs if ss == s)
+            if max_s is not None and required_for_s > max_s:
+                issues.append(
+                    f"Visitor '{s}' has {required_for_s} required meetings but max allowed is {max_s}. "
+                    "Increase max via set_visitor_meeting_bounds(...) or relax require_meeting rules."
+                )
+
+            student_slots = set(self.students_available[s])
+            feasible_pair_count = sum(1 for f in faculty_available if len(_allowed_slots(s, f)) > 0)
+            upper = min(len(student_slots), feasible_pair_count)
+            for ss, break_slots, min_breaks in self._required_breaks:
+                if ss != s:
+                    continue
+                inside = student_slots.intersection(set(break_slots))
+                outside = student_slots.difference(set(break_slots))
+                inside_cap = min(len(inside), len(break_slots) - min_breaks)
+                upper = min(upper, len(outside) + inside_cap)
+            if min_s > upper:
+                issues.append(
+                    f"Visitor '{s}' has min required meetings {min_s}, but at most {upper} meetings are possible "
+                    "under current availability/hard constraints. "
+                    "Lower this visitor minimum via set_visitor_meeting_bounds(...) or relax hard constraints."
+                )
+
+        for f in faculty_available:
+            min_f, max_f = self._effective_faculty_bounds(f, min_visitors, max_visitors)
+            if min_f > max_f:
+                issues.append(
+                    f"Invalid effective faculty bounds for '{f}': min={min_f} exceeds max={max_f}. "
+                    "Adjust set_faculty_meeting_bounds(...)."
+                )
+            required_for_f = sum(1 for (_, ff) in required_pairs if ff == f)
+            if required_for_f > max_f:
+                issues.append(
+                    f"Faculty '{f}' has {required_for_f} required visitor meetings but max allowed is {max_f}. "
+                    "Increase max via set_faculty_meeting_bounds(...) or relax require_meeting rules."
+                )
+            feasible_pair_count = sum(1 for s in visitors if len(_allowed_slots(s, f)) > 0)
+            slot_capacity = len(self.faculty[f]["avail"]) * max_group
+            upper = min(feasible_pair_count, slot_capacity)
+            if min_f > upper:
+                issues.append(
+                    f"Faculty '{f}' has min required meetings {min_f}, but at most {upper} meetings are possible "
+                    "under current availability/hard constraints. "
+                    "Lower this faculty minimum via set_faculty_meeting_bounds(...) or relax hard constraints."
+                )
+        return issues
+
+    def _run_presolve_hard_constraint_checks(
+        self,
+        min_visitors,
+        max_visitors,
+        min_faculty,
+        max_group,
+        raise_on_issue=True,
+    ):
+        """Collect and optionally raise on obvious hard-constraint contradictions."""
+        issues = self._collect_presolve_hard_constraint_issues(
+            min_visitors=min_visitors,
+            max_visitors=max_visitors,
+            min_faculty=min_faculty,
+            max_group=max_group,
+        )
+        if raise_on_issue and issues:
+            msg = "Pre-solve hard-constraint checks found contradictions:\n- " + "\n- ".join(sorted(set(issues)))
+            raise ValueError(msg)
+        return issues
         
     def _solve_model(self, tee, record_results=True):
         """Solve the currently built model with the configured solver backend.

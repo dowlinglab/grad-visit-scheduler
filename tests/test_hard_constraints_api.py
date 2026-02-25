@@ -141,6 +141,212 @@ def test_require_meeting_no_slot_form_error_paths(tmp_path: Path):
         s2.require_meeting("Visitor 1", "Faculty A")
 
 
+def test_optional_bounds_api_validation_and_clear(tmp_path: Path):
+    """Optional bounds APIs should validate values and support clearing with None."""
+    s = _build_scheduler(tmp_path)
+
+    with pytest.raises(ValueError, match="Unknown visitor"):
+        s.set_visitor_meeting_bounds("No Visitor", min_meetings=1)
+    with pytest.raises(ValueError, match="Unknown faculty"):
+        s.set_faculty_meeting_bounds("No Faculty", min_meetings=1)
+    with pytest.raises(ValueError, match="nonnegative integer or None"):
+        s.set_visitor_meeting_bounds("Visitor 1", min_meetings="bad")
+    with pytest.raises(ValueError, match="nonnegative integer or None"):
+        s.set_faculty_meeting_bounds("Faculty A", max_meetings=-1)
+    with pytest.raises(ValueError, match="exceeds"):
+        s.set_visitor_meeting_bounds("Visitor 1", min_meetings=2, max_meetings=1)
+    with pytest.raises(ValueError, match="exceeds"):
+        s.set_faculty_meeting_bounds("Faculty A", min_meetings=3, max_meetings=2)
+
+    s.set_visitor_meeting_bounds("Visitor 1", min_meetings=1, max_meetings=1)
+    s.set_faculty_meeting_bounds("Faculty A", min_meetings=1, max_meetings=1)
+    assert "Visitor 1" in s._visitor_meeting_bounds
+    assert "Faculty A" in s._faculty_meeting_bounds
+
+    s.set_visitor_meeting_bounds("Visitor 1", min_meetings=None, max_meetings=None)
+    s.set_faculty_meeting_bounds("Faculty A", min_meetings=None, max_meetings=None)
+    assert "Visitor 1" not in s._visitor_meeting_bounds
+    assert "Faculty A" not in s._faculty_meeting_bounds
+
+
+def test_presolve_checks_raise_with_api_recommendations(tmp_path: Path):
+    """Pre-solve checks should fail early and recommend optional bound APIs."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A")
+    s.set_visitor_meeting_bounds("Visitor 1", max_meetings=0)
+    with pytest.raises(ValueError, match="set_visitor_meeting_bounds"):
+        s.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            tee=False,
+            run_name="presolve_visitor_bounds",
+        )
+
+    s2 = _build_scheduler(tmp_path)
+    s2.require_meeting("Visitor 1", "Faculty A")
+    s2.require_meeting("Visitor 2", "Faculty A")
+    s2.set_faculty_meeting_bounds("Faculty A", max_meetings=1)
+    with pytest.raises(ValueError, match="set_faculty_meeting_bounds"):
+        s2.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            tee=False,
+            run_name="presolve_faculty_bounds",
+        )
+
+
+def test_presolve_default_fast_fail_happens_before_model_build(tmp_path: Path, monkeypatch):
+    """Default pre-check mode should fail before attempting model construction."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A")
+    s.set_visitor_meeting_bounds("Visitor 1", max_meetings=0)
+
+    called = {"build": 0}
+    original_build = s._build_model
+
+    def _wrapped_build(*args, **kwargs):
+        called["build"] += 1
+        return original_build(*args, **kwargs)
+
+    monkeypatch.setattr(s, "_build_model", _wrapped_build)
+
+    with pytest.raises(ValueError, match="Pre-solve hard-constraint checks found contradictions"):
+        s.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            debug_infeasible=False,
+            tee=False,
+            run_name="fast_fail_before_build",
+        )
+    assert called["build"] == 0
+
+
+def test_presolve_debug_mode_builds_model_then_raises(tmp_path: Path):
+    """debug_infeasible=True should build model first, then raise on checks."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A")
+    s.set_visitor_meeting_bounds("Visitor 1", max_meetings=0)
+
+    with pytest.raises(ValueError, match="Pre-solve hard-constraint checks found contradictions"):
+        s.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            debug_infeasible=True,
+            tee=False,
+            run_name="debug_build_then_raise",
+        )
+    assert hasattr(s, "model")
+    assert hasattr(s.model, "y")
+
+
+def test_collect_wrapper_can_return_issues_without_raising(tmp_path: Path):
+    """Wrapper should support collect-only mode for debug workflows."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A")
+    s.set_visitor_meeting_bounds("Visitor 1", max_meetings=0)
+    issues = s._run_presolve_hard_constraint_checks(
+        min_visitors=0,
+        max_visitors=4,
+        min_faculty=0,
+        max_group=1,
+        raise_on_issue=False,
+    )
+    assert len(issues) >= 1
+    assert any("set_visitor_meeting_bounds" in msg for msg in issues)
+
+
+def test_top_n_debug_infeasible_builds_then_raises(tmp_path: Path):
+    """Top-N API should support debug_infeasible behavior consistently."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A")
+    s.set_visitor_meeting_bounds("Visitor 1", max_meetings=0)
+    with pytest.raises(ValueError, match="Pre-solve hard-constraint checks found contradictions"):
+        s.schedule_visitors_top_n(
+            n_solutions=2,
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            debug_infeasible=True,
+            tee=False,
+            run_name="topn_debug_raise",
+        )
+    assert hasattr(s, "model")
+    assert hasattr(s.model, "y")
+
+
+def test_presolve_checks_for_slot_collisions(tmp_path: Path):
+    """Pre-solve should reject obvious fixed-slot collisions before MILP solve."""
+    s = _build_scheduler(tmp_path)
+    s.require_meeting("Visitor 1", "Faculty A", time_slot=1)
+    s.require_meeting("Visitor 1", "Faculty B", time_slot=1)
+    with pytest.raises(ValueError, match="No-simultaneous-meeting constraint"):
+        s.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            tee=False,
+            run_name="presolve_visitor_slot_collision",
+        )
+
+    s2 = _build_scheduler(tmp_path)
+    s2.require_meeting("Visitor 1", "Faculty A", time_slot=1)
+    s2.require_meeting("Visitor 2", "Faculty A", time_slot=1)
+    with pytest.raises(ValueError, match="exceeds max_group"):
+        s2.schedule_visitors(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=4,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=False,
+            tee=False,
+            run_name="presolve_faculty_slot_collision",
+        )
+
+
+def test_optional_bounds_are_enforced_in_model(tmp_path: Path):
+    """Per-entity bounds should be reflected in built model constraints."""
+    s = _build_scheduler(tmp_path)
+    s.set_visitor_meeting_bounds("Visitor 1", min_meetings=1, max_meetings=1)
+    s.set_faculty_meeting_bounds("Faculty A", min_meetings=1, max_meetings=1)
+
+    s._build_model(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=4,
+        min_faculty=0,
+        max_group=1,
+        enforce_breaks=False,
+    )
+    m = s.model
+    assert m.min_faculty["Visitor 1"].lower == 1
+    assert m.max_faculty["Visitor 1"].upper == 1
+    assert m.min_visitors_constraint["Faculty A"].lower == 1
+    assert m.max_visitors_constraint["Faculty A"].upper == 1
+
+
 def test_integration_solve_enforces_hard_constraints(tmp_path: Path):
     """Solved schedule should satisfy all added hard constraints."""
     if not _highs_available():

@@ -11,7 +11,18 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
   - `forbid_meeting(visitor, faculty, time_slot=None)`
   - `require_meeting(visitor, faculty, time_slot=None)`
   - `require_break(visitor, slots=None, min_breaks=1)`
+- New optional per-entity bound override APIs:
+  - `set_visitor_meeting_bounds(visitor, min_meetings=None, max_meetings=None)`
+  - `set_faculty_meeting_bounds(faculty, min_meetings=None, max_meetings=None)`
 - New validation and contradiction checks for these APIs with clear `ValueError` messages.
+- New pre-solve contradiction checks (run immediately before solve) that catch
+  obvious hard-constraint/bounds conflicts early and recommend optional
+  override APIs where appropriate.
+- New solve option `debug_infeasible` for `schedule_visitors(...)` and
+  `schedule_visitors_top_n(...)`:
+  - default (`False`): fail fast before model build on pre-solve contradictions,
+  - debug mode (`True`): build model first, then raise pre-solve errors to
+    enable IIS/manual model inspection.
 - New tests for hard-constraint API behavior and integration solve enforcement:
   - `tests/test_hard_constraints_api.py`.
 - API and quickstart documentation updates with advanced hard-constraint examples.

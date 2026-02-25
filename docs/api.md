@@ -49,6 +49,8 @@ This raises `RuntimeError` if no feasible solution is loaded.
 - `forbid_meeting(visitor, faculty, time_slot=None)`
 - `require_meeting(visitor, faculty, time_slot=None)`
 - `require_break(visitor, slots=None, min_breaks=1)`
+- `set_visitor_meeting_bounds(visitor, min_meetings=None, max_meetings=None)`
+- `set_faculty_meeting_bounds(faculty, min_meetings=None, max_meetings=None)`
 
 Example:
 
@@ -59,6 +61,12 @@ s.require_break("Visitor 3", slots=[2, 3], min_breaks=1)
 ```
 
 Each call adds a hard MILP constraint. Duplicate calls are idempotent.
+Bounds APIs are optional per-entity overrides; `None` means "use global
+defaults". Pre-solve checks run immediately before solve and raise clear
+`ValueError` messages for obvious contradictions, including suggestions for
+these optional bound APIs. Set `debug_infeasible=True` on solve methods to
+build the model before raising pre-solve errors, which supports IIS/manual
+inspection workflows.
 
 ## Top-N Review Helper
 

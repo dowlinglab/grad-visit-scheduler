@@ -143,8 +143,20 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `min_faculty`: minimum number of faculty each visitor must meet.
 - `max_group`: maximum size of a meeting group at any time slot.
 - `enforce_breaks`: force breaks for visitors and faculty during the configured break window.
+- `debug_infeasible`: if `True`, build the model before raising pre-solve contradiction errors (useful for IIS/manual inspection of `s.model`).
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.
+
+Visitor-specific hard constraints and optional per-entity bounds:
+
+```python
+s.forbid_meeting("Visitor 1", "Prof. A", time_slot=2)
+s.require_meeting("Visitor 2", "Prof. B")
+s.require_break("Visitor 3", slots=[2, 3], min_breaks=1)
+
+s.set_visitor_meeting_bounds("Visitor 3", min_meetings=1, max_meetings=2)
+s.set_faculty_meeting_bounds("Prof. B", min_meetings=1, max_meetings=4)
+```
 
 To generate multiple ranked schedules, use no-good cuts:
 
