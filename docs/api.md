@@ -42,6 +42,24 @@ else:
 You can also access the loaded solved snapshot with `Scheduler.current_solution()`.
 This raises `RuntimeError` if no feasible solution is loaded.
 
+## Visitor-Specific Hard Constraints
+
+`Scheduler` provides hard-constraint APIs for visitor-specific exceptions:
+
+- `forbid_meeting(visitor, faculty, time_slot=None)`
+- `require_meeting(visitor, faculty, time_slot=None)`
+- `require_break(visitor, slots=None, min_breaks=1)`
+
+Example:
+
+```python
+s.forbid_meeting("Visitor 1", "Prof. A", time_slot=2)
+s.require_meeting("Visitor 2", "Prof. B")
+s.require_break("Visitor 3", slots=[2, 3], min_breaks=1)
+```
+
+Each call adds a hard MILP constraint. Duplicate calls are idempotent.
+
 ## Top-N Review Helper
 
 `SolutionSet.summarize(...)` packages the common "review top-N solutions" workflow:

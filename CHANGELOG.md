@@ -6,6 +6,16 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+### Added
+- New visitor-specific hard-constraint APIs on `Scheduler`:
+  - `forbid_meeting(visitor, faculty, time_slot=None)`
+  - `require_meeting(visitor, faculty, time_slot=None)`
+  - `require_break(visitor, slots=None, min_breaks=1)`
+- New validation and contradiction checks for these APIs with clear `ValueError` messages.
+- New tests for hard-constraint API behavior and integration solve enforcement:
+  - `tests/test_hard_constraints_api.py`.
+- API and quickstart documentation updates with advanced hard-constraint examples.
+
 ## [0.3.1] - 2026-02-17
 
 ### Added

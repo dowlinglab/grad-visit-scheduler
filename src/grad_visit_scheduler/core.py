@@ -740,10 +740,232 @@ class Scheduler:
 
         # Create weights using defaults
         self.update_weights()
+        self._init_hard_constraint_state()
 
         # Save default solver and legacy mode marker
         self.mode = mode
         self.solver = solver
+
+    def _init_hard_constraint_state(self):
+        """Initialize user-defined hard-constraint storage.
+
+        Storage is set-based so rules are cumulative and naturally idempotent.
+        Re-adding the same rule has no effect on model behavior.
+        """
+        self._forbidden_meetings_all_slots = set()
+        self._forbidden_meetings_by_slot = set()
+        self._required_meetings_all_slots = set()
+        self._required_meetings_by_slot = set()
+        self._required_breaks = set()
+
+    def _validate_visitor_name(self, visitor):
+        """Validate and return visitor name."""
+        if visitor not in self.student_data.index:
+            valid = ", ".join(str(v) for v in self.student_data.index)
+            raise ValueError(f"Unknown visitor '{visitor}'. Valid visitors: [{valid}]")
+        return visitor
+
+    def _validate_faculty_name(self, faculty):
+        """Validate and return faculty name."""
+        if faculty not in self.faculty:
+            valid = ", ".join(str(f) for f in self.faculty.keys())
+            raise ValueError(f"Unknown faculty '{faculty}'. Valid faculty: [{valid}]")
+        return faculty
+
+    def _validate_slot_index(self, time_slot):
+        """Validate and return integer time-slot index."""
+        try:
+            slot = int(time_slot)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid time_slot '{time_slot}'. Expected integer in range 1..{self.number_time_slots}.")
+        if slot not in self.time_slots:
+            raise ValueError(f"Invalid time_slot {slot}. Expected integer in range 1..{self.number_time_slots}.")
+        return slot
+
+    def _validate_slot_collection(self, slots):
+        """Validate optional slots iterable and return canonical tuple."""
+        if slots is None:
+            return tuple(self.time_slots)
+        if isinstance(slots, (str, bytes)):
+            raise ValueError("slots must be an iterable of slot indices, not a string.")
+        slots_out = []
+        for slot in slots:
+            slots_out.append(self._validate_slot_index(slot))
+        if len(slots_out) == 0:
+            raise ValueError("slots must contain at least one time slot.")
+        return tuple(sorted(set(slots_out)))
+
+    def _meeting_feasible_slots(self, visitor, faculty):
+        """Return slots where visitor/faculty meeting could occur before user hard constraints."""
+        faculty_avail = set(self.faculty[faculty]["avail"])
+        student_avail = set(self.students_available.get(visitor, self.time_slots))
+        return tuple(sorted(faculty_avail.intersection(student_avail)))
+
+    def _required_specific_meeting_count(self, visitor, slots):
+        """Count required slot-specific meetings for visitor within given slots."""
+        slot_set = set(slots)
+        return sum(1 for (s, _, t) in self._required_meetings_by_slot if s == visitor and t in slot_set)
+
+    def _check_break_contradictions_for_visitor(self, visitor):
+        """Raise if current required meetings violate any required-break hard constraint."""
+        for s, slots, min_breaks in self._required_breaks:
+            if s != visitor:
+                continue
+            max_meetings_in_slots = len(slots) - min_breaks
+            required_specific = self._required_specific_meeting_count(visitor, slots)
+            if required_specific > max_meetings_in_slots:
+                raise ValueError(
+                    f"Contradictory hard constraints for visitor '{visitor}': "
+                    f"{required_specific} slot-specific required meetings fall in slots {list(slots)}, "
+                    f"but require_break allows at most {max_meetings_in_slots} meetings there."
+                )
+
+    def forbid_meeting(self, visitor, faculty, time_slot=None):
+        """Hard-forbid a visitor/faculty meeting in one slot or all slots.
+
+        Parameters
+        ----------
+        visitor:
+            Visitor name from the loaded CSV.
+        faculty:
+            Faculty name from the active faculty catalog.
+        time_slot:
+            Optional slot index. If omitted, forbids this pair for all slots.
+
+        Raises
+        ------
+        ValueError
+            On unknown visitor/faculty, invalid slot index, or direct
+            contradiction with previously required hard constraints.
+        """
+        visitor = self._validate_visitor_name(visitor)
+        faculty = self._validate_faculty_name(faculty)
+        if time_slot is None:
+            if (visitor, faculty) in self._required_meetings_all_slots:
+                raise ValueError(
+                    f"Contradictory hard constraints for ({visitor}, {faculty}): "
+                    "meeting is already required across all slots."
+                )
+            required_slots = [t for (s, f, t) in self._required_meetings_by_slot if s == visitor and f == faculty]
+            if required_slots:
+                raise ValueError(
+                    f"Contradictory hard constraints for ({visitor}, {faculty}): "
+                    f"meeting is already required at slot(s) {sorted(required_slots)}."
+                )
+            self._forbidden_meetings_all_slots.add((visitor, faculty))
+            return
+
+        slot = self._validate_slot_index(time_slot)
+        if (visitor, faculty) in self._required_meetings_all_slots:
+            raise ValueError(
+                f"Contradictory hard constraints for ({visitor}, {faculty}): "
+                "meeting is already required across all slots."
+            )
+        if (visitor, faculty, slot) in self._required_meetings_by_slot:
+            raise ValueError(
+                f"Contradictory hard constraints for ({visitor}, {faculty}, slot {slot}): "
+                "meeting is already required in that slot."
+            )
+        self._forbidden_meetings_by_slot.add((visitor, faculty, slot))
+
+    def require_meeting(self, visitor, faculty, time_slot=None):
+        """Hard-require a visitor/faculty meeting in one slot or exactly once overall.
+
+        Parameters
+        ----------
+        visitor:
+            Visitor name from the loaded CSV.
+        faculty:
+            Faculty name from the active faculty catalog.
+        time_slot:
+            Optional slot index. If omitted, enforces exactly one meeting for
+            this visitor/faculty pair across all slots.
+
+        Raises
+        ------
+        ValueError
+            On unknown visitor/faculty, invalid slot index, infeasible slot
+            availability, or direct contradiction with existing hard rules.
+        """
+        visitor = self._validate_visitor_name(visitor)
+        faculty = self._validate_faculty_name(faculty)
+
+        feasible_slots = set(self._meeting_feasible_slots(visitor, faculty))
+        if time_slot is None:
+            if (visitor, faculty) in self._forbidden_meetings_all_slots:
+                raise ValueError(
+                    f"Contradictory hard constraints for ({visitor}, {faculty}): "
+                    "meeting is already forbidden across all slots."
+                )
+            if not feasible_slots:
+                raise ValueError(
+                    f"Cannot require meeting for ({visitor}, {faculty}): no feasible slot remains "
+                    "after faculty and visitor availability."
+                )
+            forbidden_slots = {t for (s, f, t) in self._forbidden_meetings_by_slot if s == visitor and f == faculty}
+            if feasible_slots.issubset(forbidden_slots):
+                raise ValueError(
+                    f"Cannot require meeting for ({visitor}, {faculty}): all feasible slots "
+                    f"{sorted(feasible_slots)} are currently forbidden."
+                )
+            self._required_meetings_all_slots.add((visitor, faculty))
+            self._check_break_contradictions_for_visitor(visitor)
+            return
+
+        slot = self._validate_slot_index(time_slot)
+        if (visitor, faculty) in self._forbidden_meetings_all_slots:
+            raise ValueError(
+                f"Contradictory hard constraints for ({visitor}, {faculty}): "
+                "meeting is already forbidden across all slots."
+            )
+        if (visitor, faculty, slot) in self._forbidden_meetings_by_slot:
+            raise ValueError(
+                f"Contradictory hard constraints for ({visitor}, {faculty}, slot {slot}): "
+                "meeting is already forbidden in that slot."
+            )
+        if slot not in feasible_slots:
+            raise ValueError(
+                f"Cannot require meeting for ({visitor}, {faculty}) at slot {slot}: "
+                "slot is outside faculty or visitor availability."
+            )
+        self._required_meetings_by_slot.add((visitor, faculty, slot))
+        self._check_break_contradictions_for_visitor(visitor)
+
+    def require_break(self, visitor, slots=None, min_breaks=1):
+        """Hard-require break slots for a visitor.
+
+        A break means the visitor has no assigned meeting in that slot.
+
+        Parameters
+        ----------
+        visitor:
+            Visitor name from the loaded CSV.
+        slots:
+            Optional iterable of slot indices to consider. If omitted, all slots
+            are considered.
+        min_breaks:
+            Minimum number of break slots required within ``slots``.
+
+        Raises
+        ------
+        ValueError
+            On unknown visitor, invalid slot indices, invalid ``min_breaks``,
+            or direct contradiction with existing slot-specific requirements.
+        """
+        visitor = self._validate_visitor_name(visitor)
+        slots_tuple = self._validate_slot_collection(slots)
+        try:
+            min_breaks = int(min_breaks)
+        except (TypeError, ValueError):
+            raise ValueError("min_breaks must be an integer.")
+        if min_breaks < 0:
+            raise ValueError("min_breaks must be nonnegative.")
+        if min_breaks > len(slots_tuple):
+            raise ValueError(
+                f"min_breaks={min_breaks} is larger than the number of provided slots ({len(slots_tuple)})."
+            )
+        self._required_breaks.add((visitor, slots_tuple, min_breaks))
+        self._check_break_contradictions_for_visitor(visitor)
 
     def _set_time_data(self, times_by_building):
         """Validate building slot data and populate scheduling time metadata.
@@ -1476,6 +1698,35 @@ class Scheduler:
         @m.Constraint(m.visitors, m.faculty, m.time)
         def availability(m, s, f, t):
             return m.y[s, f, t] <= (1 if t in self.faculty[f]['avail'] else 0)
+
+        # User hard constraints (visitor/faculty requirements and exclusions)
+        m.user_hard_constraints = pyo.ConstraintList()
+        for s, f in sorted(self._forbidden_meetings_all_slots):
+            if s not in m.visitors or f not in m.faculty:
+                continue
+            for t in m.time:
+                m.user_hard_constraints.add(m.y[s, f, t] == 0)
+        for s, f, t in sorted(self._forbidden_meetings_by_slot):
+            if s not in m.visitors or f not in m.faculty:
+                continue
+            if t in m.time:
+                m.user_hard_constraints.add(m.y[s, f, t] == 0)
+        for s, f in sorted(self._required_meetings_all_slots):
+            if s not in m.visitors or f not in m.faculty:
+                continue
+            m.user_hard_constraints.add(sum(m.y[s, f, t] for t in m.time) == 1)
+        for s, f, t in sorted(self._required_meetings_by_slot):
+            if s not in m.visitors or f not in m.faculty:
+                continue
+            if t in m.time:
+                m.user_hard_constraints.add(m.y[s, f, t] == 1)
+        for s, slots, min_breaks in sorted(self._required_breaks):
+            if s not in m.visitors:
+                continue
+            max_meetings = len(slots) - min_breaks
+            m.user_hard_constraints.add(
+                sum(m.y[s, f, t] for f in m.faculty for t in slots if t in m.time) <= max_meetings
+            )
         
         @m.Constraint(m.faculty)
         def min_visitors_constraint(m, f):

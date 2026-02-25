@@ -94,6 +94,26 @@ Common options on `schedule_visitors(...)`:
 - `enforce_breaks`: enforce break-window constraints.
 - `tee`: print solver output for debugging.
 
+## 3.1) Add visitor-specific hard constraints
+
+Use these APIs before `schedule_visitors(...)` to force or forbid specific outcomes:
+
+```python
+# 1) forbid_meeting(visitor, faculty, time_slot=None)
+s.forbid_meeting("Visitor 1", "Prof. C")         # forbid all slots
+s.forbid_meeting("Visitor 2", "Prof. A", 3)      # forbid only slot 3
+
+# 2) require_meeting(visitor, faculty, time_slot=None)
+s.require_meeting("Visitor 3", "Prof. B")        # require exactly once across all slots
+s.require_meeting("Visitor 4", "Prof. D", 2)     # require slot 2 specifically
+
+# 3) require_break(visitor, slots=None, min_breaks=1)
+s.require_break("Visitor 5")                     # at least one break in all slots
+s.require_break("Visitor 6", slots=[2, 3], min_breaks=1)
+```
+
+These are hard MILP constraints (not preference weights).
+
 ## 4) Inspect and export solutions
 
 Schedule plots from this example:
