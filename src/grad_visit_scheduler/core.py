@@ -1399,6 +1399,10 @@ class Scheduler:
             return max(1, requested_breaks)
         return requested_breaks
 
+    def _auto_visitor_breaks_enabled(self, enforce_breaks):
+        """Return whether automatic visitor break constraints should be active."""
+        return self.require_break_constraints_default or enforce_breaks is True
+
     def _faculty_unavailable_nonbreak_count(self, faculty_name, break_options):
         """Return unavailable faculty slots that already count as breaks outside break options."""
         break_option_set = set(break_options)
@@ -1935,7 +1939,8 @@ class Scheduler:
         """
         m = pyo.ConcreteModel()
         required_faculty_breaks = self._normalize_required_faculty_breaks(enforce_breaks)
-        break_constraints_enabled = required_faculty_breaks > 0
+        faculty_break_constraints_enabled = required_faculty_breaks > 0
+        visitor_break_constraints_enabled = self._auto_visitor_breaks_enabled(enforce_breaks)
 
         # SETS
         
@@ -1981,13 +1986,14 @@ class Scheduler:
             # in_building[s, b, t] == 1  <=>  visitor s is in building b at time t
             m.in_building = pyo.Var(m.visitors, m.buildings, m.time, domain=pyo.Binary)
 
-        if break_constraints_enabled:
+        if faculty_break_constraints_enabled or visitor_break_constraints_enabled:
             self._validate_required_faculty_breaks(required_faculty_breaks, self.break_times)
             m.break_options = self.break_times
-            m.faculty_breaks = pyo.Var(m.faculty, m.break_options, domain=pyo.Binary)
-            faculty_unavailable_nonbreak = {
-                f: self._faculty_unavailable_nonbreak_count(f, m.break_options) for f in m.faculty
-            }
+            if faculty_break_constraints_enabled:
+                m.faculty_breaks = pyo.Var(m.faculty, m.break_options, domain=pyo.Binary)
+                faculty_unavailable_nonbreak = {
+                    f: self._faculty_unavailable_nonbreak_count(f, m.break_options) for f in m.faculty
+                }
 
         # EXPRESSIONS AND OBJECTIVE
         
@@ -2120,13 +2126,13 @@ class Scheduler:
                                     m.in_building[s, b_from, t_from] + m.in_building[s, b_to, t_to] <= 1
                                 )
 
-        if break_constraints_enabled:
+        if visitor_break_constraints_enabled:
             # Require at least one break for visitors within the configured break window
             @m.Constraint(m.visitors)
             def student_breaks(m, s):
                 return sum(m.y[s, f, t] for f in m.faculty for t in m.break_options) <= len(m.break_options) - 1
 
-        if break_constraints_enabled:
+        if faculty_break_constraints_enabled:
             # Determine when faculty are in breaks
             @m.Constraint(m.faculty, m.break_options)
             def faculty_in_break(m, f, t):

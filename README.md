@@ -150,9 +150,9 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `min_faculty`: minimum number of faculty each visitor must meet.
 - `max_group`: maximum size of a meeting group at any time slot.
 - `enforce_breaks`: automatic break control. Use `False` for no automatic
-  breaks, `True` for the historical one-break rule, or an integer like `2` to
-  require that many faculty breaks while still enforcing the usual one visitor
-  break in the configured break window.
+  breaks, `True` for the historical visitor-plus-faculty one-break rule, or an
+  integer like `2` to require that many faculty breaks without turning on the
+  legacy automatic visitor break.
 - `debug_infeasible`: if `True`, build the model before raising pre-solve contradiction errors (useful for IIS/manual inspection of `s.model`).
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.

@@ -94,9 +94,9 @@ Common options on `schedule_visitors(...)`:
 - `min_faculty`: minimum meetings required per visitor.
 - `max_group`: cap on simultaneous visitors in one faculty meeting.
 - `enforce_breaks`: automatic break control. `False` disables automatic break
-  constraints, `True` preserves the historical one-break rule, and integers
-  such as `2` require that many faculty breaks while still enforcing the usual
-  one visitor break in the configured break window.
+  constraints, `True` preserves the historical visitor-plus-faculty one-break
+  rule, and integers such as `2` require that many faculty breaks without
+  enabling the legacy automatic visitor break.
 - `tee`: print solver output for debugging.
 
 For advanced hard constraints, per-entity bounds, and debug/infeasibility

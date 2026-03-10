@@ -83,6 +83,47 @@ def _build_break_scheduler(
     return scheduler
 
 
+def _build_five_slot_virtual_scheduler(tmp_path: Path) -> Scheduler:
+    """Build a five-slot one-building scheduler for break-semantic regression tests."""
+    csv_path = tmp_path / "visitors_five_slot.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "Name": "Visitor 1",
+                "Prof1": "Faculty A",
+                "Prof2": "Faculty B",
+                "Prof3": "Faculty C",
+                "Prof4": "Faculty D",
+                "Prof5": "Faculty E",
+                "Area1": "Area1",
+                "Area2": "Area1",
+            }
+        ],
+    )
+    times_by_building = {
+        "Zoom": [
+            "8:30 AM-8:55 AM",
+            "9:00 AM-9:25 AM",
+            "9:30 AM-9:55 AM",
+            "10:00 AM-10:25 AM",
+            "10:30 AM-10:55 AM",
+        ],
+        "breaks": [1, 2, 3, 4, 5],
+    }
+    faculty_catalog = {
+        name: {"building": "Zoom", "room": "Zoom", "areas": ["Area1"], "status": "active"}
+        for name in ["Faculty A", "Faculty B", "Faculty C", "Faculty D", "Faculty E"]
+    }
+    return Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        movement={"policy": "none", "phase_slot": {"Zoom": 1}},
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+
+
 def test_forbid_require_break_basic_and_idempotent_storage(tmp_path: Path):
     """APIs should accept valid calls and remain idempotent for duplicate rules."""
     s = _build_scheduler(tmp_path)
@@ -306,6 +347,49 @@ def test_schedule_visitors_top_n_accepts_integer_enforce_breaks(tmp_path: Path):
         run_name="break_top_n",
     )
     assert len(top) == 1
+
+
+@pytest.mark.skipif(not _highs_available(), reason="HiGHS solver unavailable")
+def test_integer_enforce_breaks_does_not_impose_automatic_visitor_breaks(tmp_path: Path):
+    """Integer faculty break counts should not inherit the legacy visitor-break toggle."""
+    s_false = _build_five_slot_virtual_scheduler(tmp_path)
+    sol_false = s_false.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=8,
+        min_faculty=5,
+        max_group=3,
+        enforce_breaks=False,
+        tee=False,
+        run_name="five_slot_false",
+    )
+    assert sol_false is not None
+
+    s_int = _build_five_slot_virtual_scheduler(tmp_path)
+    sol_int = s_int.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=8,
+        min_faculty=5,
+        max_group=3,
+        enforce_breaks=1,
+        tee=False,
+        run_name="five_slot_int",
+    )
+    assert sol_int is not None
+
+    s_true = _build_five_slot_virtual_scheduler(tmp_path)
+    sol_true = s_true.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=8,
+        min_faculty=5,
+        max_group=3,
+        enforce_breaks=True,
+        tee=False,
+        run_name="five_slot_true",
+    )
+    assert sol_true is None
 
 
 def test_require_meeting_no_slot_form_error_paths(tmp_path: Path):

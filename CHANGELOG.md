@@ -29,6 +29,9 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
   has only one configured building.
 - Faculty break enforcement now counts faculty-unavailable slots toward the
   requested break total and only forces additional explicit breaks when needed.
+- Integer `enforce_breaks` values now control faculty breaks without turning on
+  the legacy automatic visitor-break requirement; boolean `True` preserves the
+  old visitor-plus-faculty behavior.
 - Shipped example configs, notebook snippets, and user-facing docs now use
   explicit `AM`/`PM` slot labels to avoid ambiguity warnings.
 - Documentation figure generation scripts now write directly into

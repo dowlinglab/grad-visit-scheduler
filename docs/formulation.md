@@ -263,7 +263,9 @@ Here $b$ is the normalized faculty break requirement derived from
 `enforce_breaks` (`False \to 0`, `True \to 1`, integer $n \to n$), and $u_f$
 counts faculty-unavailable slots outside the configured break window that
 already count as breaks. Unavailable slots inside the break window are fixed to
-$r_{ft}=1$ in the implementation.
+$r_{ft}=1$ in the implementation. Integer `enforce_breaks` values adjust this
+faculty-only requirement; the historical automatic visitor break remains tied to
+boolean `enforce_breaks=True` (or legacy `NO_OFFSET` compatibility).
 
 ### 13. Fixed unavailability for visitors
 
