@@ -237,16 +237,18 @@ Applied when automatic student break constraints are enabled (`movement` legacy
 
 $$
 \sum_{f \in \mathcal{F}} \sum_{t \in \mathcal{B}} y_{sft}
-\le |\mathcal{B}| - 1
+\le |\mathcal{B}| - b_s
 \quad \forall s
 $$
 
-More generally, each visitor must have at least `student_breaks` breaks during
-the configured break window.
+Here $b_s$ is the configured `student_breaks` count. Each visitor must have at
+least that many breaks during the configured break window.
 
 ### 12. Faculty break variables and requirement
 
-Applied when break constraints are enabled:
+Applied when automatic faculty break constraints are enabled
+(`faculty_breaks > 0`, `movement` legacy `NO_OFFSET` compatibility, or legacy
+`enforce_breaks=True`):
 
 $$
 \sum_{s \in \mathcal{S}} y_{sft} \le G(1-r_{ft})
@@ -260,8 +262,8 @@ u_f + \sum_{t \in \mathcal{B}} r_{ft} \ge b
 \quad \forall f
 $$
 
-Here $b$ is the normalized faculty break requirement derived from
-`faculty_breaks`, and $u_f$ counts faculty-unavailable slots outside the
+Here $b$ is the configured `faculty_breaks` count after applying legacy alias
+resolution, and $u_f$ counts faculty-unavailable slots outside the
 configured break window that already count as breaks. Unavailable slots inside
 the break window are fixed to $r_{ft}=1$ in the implementation. Legacy
 `enforce_breaks=True` maps to `faculty_breaks=1` and `student_breaks=1`.
