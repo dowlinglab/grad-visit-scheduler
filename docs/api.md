@@ -71,7 +71,7 @@ ranked solutions, see
 Internal review pattern (keep rank labels visible in plot titles):
 
 ```python
-top = s.schedule_visitors_top_n(n_solutions=3, enforce_breaks=2)
+top = s.schedule_visitors_top_n(n_solutions=3, faculty_breaks=2, student_breaks=1)
 report = top.summarize(
     ranks_to_plot=(1, 2),
     save_files=True,
@@ -85,7 +85,7 @@ print(report["compact"])
 External-facing pattern (hide rank labels for faculty/visitor handouts):
 
 ```python
-top = s.schedule_visitors_top_n(n_solutions=3, enforce_breaks=2)
+top = s.schedule_visitors_top_n(n_solutions=3, faculty_breaks=2, student_breaks=1)
 report = top.summarize(
     ranks_to_plot=(1,),
     save_files=True,

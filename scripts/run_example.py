@@ -28,7 +28,8 @@ sol = s.schedule_visitors(
     max_visitors=8,
     min_faculty=1,
     max_group=2,
-    enforce_breaks=True,
+    faculty_breaks=1,
+    student_breaks=1,
     tee=False,
     run_name="demo",
 )

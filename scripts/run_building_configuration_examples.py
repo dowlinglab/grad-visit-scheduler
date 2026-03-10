@@ -132,7 +132,7 @@ def _solve_case(scenario: Scenario, plot_dir: Path | None):
     run_cfg_path = examples / scenario.run_file
     with run_cfg_path.open("r", encoding="utf-8") as f:
         run_cfg = yaml.safe_load(f) or {}
-    enforce_breaks = bool(run_cfg.get("breaks"))
+    auto_breaks = 1 if run_cfg.get("breaks") else 0
 
     # Some documented scenarios intentionally use `movement.policy='none'` with
     # shifted clocks to illustrate the tradeoff against `nonoverlap_time`. Hide
@@ -156,7 +156,8 @@ def _solve_case(scenario: Scenario, plot_dir: Path | None):
             max_visitors=8,
             min_faculty=1,
             max_group=2,
-            enforce_breaks=enforce_breaks,
+            faculty_breaks=auto_breaks,
+            student_breaks=auto_breaks,
             tee=False,
             run_name=scenario.slug,
         )

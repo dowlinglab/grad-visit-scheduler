@@ -1383,25 +1383,43 @@ class Scheduler:
                 stacklevel=2,
             )
 
-    def _normalize_required_faculty_breaks(self, enforce_breaks):
-        """Normalize ``enforce_breaks`` into a nonnegative faculty-break count."""
-        if isinstance(enforce_breaks, bool):
-            requested_breaks = 1 if enforce_breaks else 0
-        elif isinstance(enforce_breaks, int):
-            requested_breaks = int(enforce_breaks)
+    def _normalize_break_count(self, value, name):
+        """Normalize a break-count argument into a nonnegative integer."""
+        if isinstance(value, bool):
+            count = int(value)
+        elif isinstance(value, int):
+            count = int(value)
         else:
-            raise ValueError("enforce_breaks must be a bool or a nonnegative integer.")
+            raise ValueError(f"{name} must be a nonnegative integer.")
+        if count < 0:
+            raise ValueError(f"{name} must be a nonnegative integer.")
+        return count
 
-        if requested_breaks < 0:
-            raise ValueError("enforce_breaks must be a nonnegative integer when provided as a count.")
+    def _resolve_break_requirements(self, enforce_breaks, faculty_breaks, student_breaks):
+        """Resolve explicit break counts plus legacy ``enforce_breaks`` alias."""
+        requested_faculty_breaks = self._normalize_break_count(faculty_breaks, "faculty_breaks")
+        requested_student_breaks = self._normalize_break_count(student_breaks, "student_breaks")
+
+        if enforce_breaks is not None:
+            if not isinstance(enforce_breaks, bool):
+                raise ValueError("enforce_breaks must be a bool when used as a compatibility alias.")
+            if requested_faculty_breaks > 0 or requested_student_breaks > 0:
+                warnings.warn(
+                    "Both legacy `enforce_breaks` and explicit `faculty_breaks`/`student_breaks` were "
+                    "provided. Ignoring `enforce_breaks` and using the explicit break counts.",
+                    FutureWarning,
+                    stacklevel=3,
+                )
+            else:
+                alias_value = 1 if enforce_breaks else 0
+                requested_faculty_breaks = alias_value
+                requested_student_breaks = alias_value
 
         if self.require_break_constraints_default:
-            return max(1, requested_breaks)
-        return requested_breaks
+            requested_faculty_breaks = max(1, requested_faculty_breaks)
+            requested_student_breaks = max(1, requested_student_breaks)
 
-    def _auto_visitor_breaks_enabled(self, enforce_breaks):
-        """Return whether automatic visitor break constraints should be active."""
-        return self.require_break_constraints_default or enforce_breaks is True
+        return requested_faculty_breaks, requested_student_breaks
 
     def _faculty_unavailable_nonbreak_count(self, faculty_name, break_options):
         """Return unavailable faculty slots that already count as breaks outside break options."""
@@ -1424,10 +1442,22 @@ class Scheduler:
             max_possible_breaks = unavailable_nonbreak + len(break_options)
             if required_faculty_breaks > max_possible_breaks:
                 raise ValueError(
-                    f"enforce_breaks={required_faculty_breaks} exceeds the maximum possible faculty breaks for "
+                    f"faculty_breaks={required_faculty_breaks} exceeds the maximum possible faculty breaks for "
                     f"'{faculty_name}' ({max_possible_breaks}: {unavailable_nonbreak} unavailable non-break slots "
                     f"+ {len(break_options)} break-option slots)."
                 )
+
+    def _validate_required_student_breaks(self, required_student_breaks, break_options):
+        """Raise when the requested student break count cannot be satisfied."""
+        if required_student_breaks <= 0:
+            return
+        if len(break_options) == 0:
+            raise ValueError("Must specify some break times!")
+        if required_student_breaks > len(break_options):
+            raise ValueError(
+                f"student_breaks={required_student_breaks} is larger than the number of break-option slots "
+                f"({len(break_options)})."
+            )
 
     def _build_box_colors(self):
         """Return a color map for configured buildings."""
@@ -1770,7 +1800,9 @@ class Scheduler:
         max_visitors=8,
         min_faculty=0,
         max_group=2,
-        enforce_breaks=False,
+        enforce_breaks=None,
+        faculty_breaks=0,
+        student_breaks=0,
         debug_infeasible=False,
         tee=False,
         run_name='',
@@ -1791,11 +1823,17 @@ class Scheduler:
         max_group:
             Maximum number of visitors allowed in a single faculty-time meeting.
         enforce_breaks:
-            Faculty-break requirement. ``False`` disables automatic break
-            enforcement, ``True`` preserves the historical one-break rule, and
-            a nonnegative integer ``n`` requires at least ``n`` faculty breaks
-            for each eligible faculty member. Automatic visitor break
-            constraints remain enabled whenever this value is positive.
+            Legacy compatibility alias. ``False`` maps to
+            ``faculty_breaks=0, student_breaks=0`` and ``True`` maps to
+            ``faculty_breaks=1, student_breaks=1`` when the explicit break
+            arguments are left at zero.
+        faculty_breaks:
+            Minimum number of automatic faculty breaks required per eligible
+            faculty member. Faculty-unavailable slots outside the break window
+            count toward this total.
+        student_breaks:
+            Minimum number of automatic student breaks required within the
+            configured break-option slots.
         debug_infeasible:
             If ``False`` (default), run pre-solve consistency checks before
             model construction and fail fast on obvious contradictions.
@@ -1821,6 +1859,8 @@ class Scheduler:
             "min_faculty": min_faculty,
             "max_group": max_group,
             "enforce_breaks": enforce_breaks,
+            "faculty_breaks": faculty_breaks,
+            "student_breaks": student_breaks,
             "debug_infeasible": debug_infeasible,
         }
         self._run_presolve_hard_constraint_checks(
@@ -1830,7 +1870,16 @@ class Scheduler:
             max_group=max_group,
             raise_on_issue=not debug_infeasible,
         )
-        self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
+        self._build_model(
+            group_penalty,
+            min_visitors,
+            max_visitors,
+            min_faculty,
+            max_group,
+            enforce_breaks=enforce_breaks,
+            faculty_breaks=faculty_breaks,
+            student_breaks=student_breaks,
+        )
         self._run_presolve_hard_constraint_checks(
             min_visitors=min_visitors,
             max_visitors=max_visitors,
@@ -1853,7 +1902,9 @@ class Scheduler:
         max_visitors=8,
         min_faculty=0,
         max_group=2,
-        enforce_breaks=False,
+        enforce_breaks=None,
+        faculty_breaks=0,
+        student_breaks=0,
         debug_infeasible=False,
         tee=False,
         run_name='',
@@ -1873,6 +1924,8 @@ class Scheduler:
             "min_faculty": min_faculty,
             "max_group": max_group,
             "enforce_breaks": enforce_breaks,
+            "faculty_breaks": faculty_breaks,
+            "student_breaks": student_breaks,
             "debug_infeasible": debug_infeasible,
             "n_solutions": n_solutions,
         }
@@ -1883,7 +1936,16 @@ class Scheduler:
             max_group=max_group,
             raise_on_issue=not debug_infeasible,
         )
-        self._build_model(group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks)
+        self._build_model(
+            group_penalty,
+            min_visitors,
+            max_visitors,
+            min_faculty,
+            max_group,
+            enforce_breaks=enforce_breaks,
+            faculty_breaks=faculty_breaks,
+            student_breaks=student_breaks,
+        )
         self._run_presolve_hard_constraint_checks(
             min_visitors=min_visitors,
             max_visitors=max_visitors,
@@ -1918,7 +1980,17 @@ class Scheduler:
         self.last_solution_set = solution_set
         return solution_set
 
-    def _build_model(self, group_penalty, min_visitors, max_visitors, min_faculty, max_group, enforce_breaks=False):
+    def _build_model(
+        self,
+        group_penalty,
+        min_visitors,
+        max_visitors,
+        min_faculty,
+        max_group,
+        enforce_breaks=None,
+        faculty_breaks=0,
+        student_breaks=0,
+    ):
         """Build the Pyomo MILP model for the current scheduler state.
 
         Parameters
@@ -1934,13 +2006,20 @@ class Scheduler:
         max_group:
             Maximum number of visitors in a single faculty-time meeting.
         enforce_breaks:
-            Boolean-or-count faculty break requirement passed through
-            ``schedule_visitors(...)`` or ``schedule_visitors_top_n(...)``.
+            Legacy compatibility alias for both break counts.
+        faculty_breaks:
+            Automatic faculty break count.
+        student_breaks:
+            Automatic student break count.
         """
         m = pyo.ConcreteModel()
-        required_faculty_breaks = self._normalize_required_faculty_breaks(enforce_breaks)
+        required_faculty_breaks, required_student_breaks = self._resolve_break_requirements(
+            enforce_breaks,
+            faculty_breaks,
+            student_breaks,
+        )
         faculty_break_constraints_enabled = required_faculty_breaks > 0
-        visitor_break_constraints_enabled = self._auto_visitor_breaks_enabled(enforce_breaks)
+        visitor_break_constraints_enabled = required_student_breaks > 0
 
         # SETS
         
@@ -1988,6 +2067,7 @@ class Scheduler:
 
         if faculty_break_constraints_enabled or visitor_break_constraints_enabled:
             self._validate_required_faculty_breaks(required_faculty_breaks, self.break_times)
+            self._validate_required_student_breaks(required_student_breaks, self.break_times)
             m.break_options = self.break_times
             if faculty_break_constraints_enabled:
                 m.faculty_breaks = pyo.Var(m.faculty, m.break_options, domain=pyo.Binary)
@@ -2127,10 +2207,14 @@ class Scheduler:
                                 )
 
         if visitor_break_constraints_enabled:
-            # Require at least one break for visitors within the configured break window
+            # Require the requested number of breaks for visitors within the
+            # configured break window.
             @m.Constraint(m.visitors)
             def student_breaks(m, s):
-                return sum(m.y[s, f, t] for f in m.faculty for t in m.break_options) <= len(m.break_options) - 1
+                return (
+                    sum(m.y[s, f, t] for f in m.faculty for t in m.break_options)
+                    <= len(m.break_options) - required_student_breaks
+                )
 
         if faculty_break_constraints_enabled:
             # Determine when faculty are in breaks

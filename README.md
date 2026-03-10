@@ -98,7 +98,8 @@ sol = s.schedule_visitors(
     max_visitors=8,
     min_faculty=1,
     max_group=2,
-    enforce_breaks=True,
+    faculty_breaks=1,
+    student_breaks=1,
     tee=False,
     run_name="demo",
 )
@@ -149,10 +150,12 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `max_visitors`: maximum number of visitors each faculty member may meet.
 - `min_faculty`: minimum number of faculty each visitor must meet.
 - `max_group`: maximum size of a meeting group at any time slot.
-- `enforce_breaks`: automatic break control. Use `False` for no automatic
-  breaks, `True` for the historical visitor-plus-faculty one-break rule, or an
-  integer like `2` to require that many faculty breaks without turning on the
-  legacy automatic visitor break.
+- `faculty_breaks`: minimum automatic faculty breaks. Faculty-unavailable slots
+  outside the break window count toward this total.
+- `student_breaks`: minimum automatic visitor breaks within the configured
+  break-option slots.
+- `enforce_breaks`: legacy compatibility alias for setting both counts to `0`
+  or `1` together.
 - `debug_infeasible`: if `True`, build the model before raising pre-solve contradiction errors (useful for IIS/manual inspection of `s.model`).
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.
@@ -163,7 +166,7 @@ infeasibility workflows, see [`docs/advanced_customization.md`](docs/advanced_cu
 To generate multiple ranked schedules, use no-good cuts:
 
 ```python
-top = s.schedule_visitors_top_n(n_solutions=3, enforce_breaks=2)
+top = s.schedule_visitors_top_n(n_solutions=3, faculty_breaks=2, student_breaks=1)
 report = top.summarize(ranks_to_plot=(1, 2), show_solution_rank=True)
 print(report["summary"])
 print(report["compact"])

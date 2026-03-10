@@ -69,7 +69,8 @@ sol = s.schedule_visitors(
     max_visitors=8,
     min_faculty=1,
     max_group=2,
-    enforce_breaks=True,
+    faculty_breaks=1,
+    student_breaks=1,
     tee=False,
     run_name="formulation_demo",
 )
@@ -93,10 +94,12 @@ Common options on `schedule_visitors(...)`:
 - `min_visitors` / `max_visitors`: faculty-level load bounds.
 - `min_faculty`: minimum meetings required per visitor.
 - `max_group`: cap on simultaneous visitors in one faculty meeting.
-- `enforce_breaks`: automatic break control. `False` disables automatic break
-  constraints, `True` preserves the historical visitor-plus-faculty one-break
-  rule, and integers such as `2` require that many faculty breaks without
-  enabling the legacy automatic visitor break.
+- `faculty_breaks`: minimum automatic faculty breaks. Faculty-unavailable slots
+  outside the break window count toward this total.
+- `student_breaks`: minimum automatic visitor breaks within the configured
+  break-option slots.
+- `enforce_breaks`: legacy compatibility alias for setting both counts to `0`
+  or `1` together.
 - `tee`: print solver output for debugging.
 
 For advanced hard constraints, per-entity bounds, and debug/infeasibility
@@ -156,7 +159,8 @@ top = s.schedule_visitors_top_n(
     max_visitors=8,
     min_faculty=1,
     max_group=2,
-    enforce_breaks=2,
+    faculty_breaks=2,
+    student_breaks=1,
     tee=False,
     run_name="formulation_top_n",
 )
