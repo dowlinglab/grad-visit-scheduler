@@ -6,6 +6,27 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+### Added
+- `slot2min(...)` now accepts explicit meridiem-qualified slot labels such as
+  `8:30 AM-8:55 AM` in addition to 24-hour labels such as `13:00-13:25`.
+- Bare 12-hour slot labels now use a visit-day heuristic (`12:00-12:59` and
+  `1:00-6:59` as PM, `7:00-11:59` as AM) and emit a `UserWarning` to encourage
+  explicit `AM`/`PM` or 24-hour times.
+- New plotting regression coverage for arbitrary absolute-time schedule axes and
+  new slot-label parsing cases.
+
+### Changed
+- Schedule plotting now derives x-axis limits and tick labels from the actual
+  slot timestamps in `times_by_building` instead of assuming a fixed afternoon
+  template starting at 1:00 PM.
+- Plot x-axis labeling is now generic (`Time`) rather than hard-coded to
+  afternoon-only usage.
+- Shipped example configs, notebook snippets, and user-facing docs now use
+  explicit `AM`/`PM` slot labels to avoid ambiguity warnings.
+- Documentation figure generation scripts now write directly into
+  `docs/_static`, and the movement-figure refresh script suppresses its known
+  expected shifted-clock warning for cleaner output.
+
 ## [0.4.0] - 2026-02-25
 
 ### Added

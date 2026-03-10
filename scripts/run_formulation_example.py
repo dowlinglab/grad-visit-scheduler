@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 
 # Allow running without installing the package
@@ -14,6 +15,7 @@ if str(SRC) not in sys.path:
 from grad_visit_scheduler import scheduler_from_configs, Solver  # noqa: E402
 
 examples = ROOT / "examples"
+DOCS_STATIC = ROOT / "docs" / "_static"
 
 s = scheduler_from_configs(
     examples / "faculty_formulation.yaml",
@@ -34,8 +36,28 @@ sol = s.schedule_visitors(
 )
 
 if sol is not None:
-    sol.plot_faculty_schedule(save_files=True, show_solution_rank=False)
-    sol.plot_visitor_schedule(save_files=True, show_solution_rank=False)
+    # Write the canonical quickstart/index figures into docs/_static so rerunning
+    # this script refreshes the checked-in documentation assets in one step.
+    prev_cwd = Path.cwd()
+    DOCS_STATIC.mkdir(parents=True, exist_ok=True)
+    os.chdir(DOCS_STATIC)
+    try:
+        sol.plot_faculty_schedule(
+            save_files=True,
+            show_solution_rank=False,
+            include_rank_in_filename=False,
+        )
+        sol.plot_visitor_schedule(
+            save_files=True,
+            show_solution_rank=False,
+            include_rank_in_filename=False,
+        )
+        Path("faculty_schedule_formulation_demo.png").replace("faculty_schedule_example.png")
+        Path("visitor_schedule_formulation_demo.png").replace("visitor_schedule_example.png")
+        Path("faculty_schedule_formulation_demo.pdf").unlink(missing_ok=True)
+        Path("visitor_schedule_formulation_demo.pdf").unlink(missing_ok=True)
+    finally:
+        os.chdir(prev_cwd)
     print("Feasible solution found.")
 else:
     print(s.infeasibility_report())

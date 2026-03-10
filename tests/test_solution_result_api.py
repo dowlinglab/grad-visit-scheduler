@@ -110,6 +110,32 @@ def _build_two_slot_single_faculty_scheduler(tmp_path: Path) -> Scheduler:
     )
 
 
+def _build_morning_scheduler(tmp_path: Path) -> Scheduler:
+    """Build a tiny scheduler with morning virtual-visit slots."""
+    csv_path = tmp_path / "visitors_morning.csv"
+    csv_path.write_text("Name,Prof1,Area1,Area2\nVisitor 1,Faculty A,Area1,Area1\n", encoding="utf-8")
+
+    times_by_building = {
+        "Virtual": ["8:30-8:55", "9:00-9:25", "9:30-9:55", "10:00-10:25", "10:30-10:55"],
+        "Overflow": ["8:30-8:55", "9:00-9:25", "9:30-9:55", "10:00-10:25", "10:30-10:55"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "Virtual",
+            "room": "Zoom",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    return Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        mode=Mode.BUILDING_A_FIRST,
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+
+
 def test_load_visitor_csv(tmp_path: Path):
     """Data helper should read visitor CSV into a DataFrame."""
     path = tmp_path / "v.csv"
@@ -238,6 +264,30 @@ def test_solution_result_single_solution_api(tmp_path: Path):
     document = Document(str(docx_file))
     assert len(document.tables) == len(sol.visitors)
     assert len(document.tables[0].rows) == len(sol.time_slots)
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_plot_schedule_axes_follow_morning_slot_times(tmp_path: Path):
+    """Solution plots should derive axis bounds from morning slot labels."""
+    s = _build_morning_scheduler(tmp_path)
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="morning_plot",
+    )
+    assert sol is not None
+
+    sol.plot_visitor_schedule(save_files=False, show_solution_rank=False)
+    ax = plt.gcf().axes[0]
+
+    assert ax.get_xlabel() == "Time"
+    assert ax.get_xlim() == pytest.approx((510, 660))
+    assert [tick.get_text() for tick in ax.get_xticklabels()[:4]] == ["8:30", "8:45", "9:00", "9:15"]
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")

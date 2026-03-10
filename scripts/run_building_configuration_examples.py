@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import sys
+import warnings
 
 import pandas as pd
 import yaml
@@ -133,23 +134,32 @@ def _solve_case(scenario: Scenario, plot_dir: Path | None):
         run_cfg = yaml.safe_load(f) or {}
     enforce_breaks = bool(run_cfg.get("breaks"))
 
-    scheduler = scheduler_from_configs(
-        examples / scenario.faculty_file,
-        run_cfg_path,
-        examples / "data_formulation_visitors.csv",
-        solver=Solver.HIGHS,
-    )
+    # Some documented scenarios intentionally use `movement.policy='none'` with
+    # shifted clocks to illustrate the tradeoff against `nonoverlap_time`. Hide
+    # that expected warning here so the docs-refresh script output stays readable.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"movement\.policy='none' with shifted building clocks can allow real-time visitor overlaps.*",
+            category=UserWarning,
+        )
+        scheduler = scheduler_from_configs(
+            examples / scenario.faculty_file,
+            run_cfg_path,
+            examples / "data_formulation_visitors.csv",
+            solver=Solver.HIGHS,
+        )
 
-    scheduler.schedule_visitors(
-        group_penalty=0.2,
-        min_visitors=2,
-        max_visitors=8,
-        min_faculty=1,
-        max_group=2,
-        enforce_breaks=enforce_breaks,
-        tee=False,
-        run_name=scenario.slug,
-    )
+        scheduler.schedule_visitors(
+            group_penalty=0.2,
+            min_visitors=2,
+            max_visitors=8,
+            min_faculty=1,
+            max_group=2,
+            enforce_breaks=enforce_breaks,
+            tee=False,
+            run_name=scenario.slug,
+        )
 
     movement_policy = scheduler.movement_policy
 
@@ -169,6 +179,8 @@ def _solve_case(scenario: Scenario, plot_dir: Path | None):
 
     sol = scheduler.current_solution()
     if plot_dir is not None:
+        # Write movement figures into docs/_static because these PNGs are the
+        # checked-in assets referenced by docs/movement.md.
         with _pushd(plot_dir):
             visitor_paths = sol.plot_visitor_schedule(
                 save_files=True,

@@ -31,6 +31,8 @@ movement:
 - `phase_slot`: earliest slot allowed for each building (supports staggered starts).
 - `travel_slots: auto`: allowed with `policy: travel_time`.
 - `min_buffer_minutes`: optional nonnegative buffer for auto-derived lags.
+- Prefer explicit `AM`/`PM` or 24-hour slot labels in run configs.
+  Bare labels are still accepted via a visit-day heuristic, but they emit a warning because they are ambiguous.
 
 ## Examples for Different Building Configurations
 

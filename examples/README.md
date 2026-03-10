@@ -40,6 +40,8 @@ Notes:
 - `movement.policy: nonoverlap_time` auto-derives lag constraints from absolute slot timestamps.
 - Use `movement.phase_slot` to configure staggered starts (for example, Building A first).
 - Use `movement.travel_slots: auto` under `travel_time` for equivalent auto-derived lags.
+- Prefer explicit slot labels such as `1:00 PM-1:25 PM` or `13:00-13:25`.
+  Bare labels like `1:00-1:25` still parse, but they trigger an ambiguity warning.
 
 Movement/staggered example configs:
 

@@ -16,6 +16,8 @@ from enum import Enum
 from collections import Counter
 from pathlib import Path
 
+_AMBIGUOUS_SLOT_WARNINGS_EMITTED = set()
+
 class Solver(Enum):
     """Supported optimization solver backends."""
 
@@ -47,7 +49,39 @@ class MovementPolicy(Enum):
     TRAVEL_TIME = "travel_time"
     NONOVERLAP_TIME = "nonoverlap_time"
 
-def schedule_axes(figsize,nslots=7):
+def _flatten_schedule_time_labels(time_labels):
+    """Return a flat list of slot labels from a mapping or iterable input."""
+    if time_labels is None:
+        return []
+    if isinstance(time_labels, dict):
+        labels = []
+        for building, slots in time_labels.items():
+            if building == "breaks":
+                continue
+            labels.extend(slots)
+        return labels
+    return list(time_labels)
+
+
+def _schedule_tick_data(time_labels=None, nslots=7):
+    """Return x-axis limits and ticks for a schedule plot."""
+    labels = _flatten_schedule_time_labels(time_labels)
+    if not labels:
+        # Backward-compatible fallback for historical afternoon templates.
+        xticks = [i for i in range(60, 30 * nslots + 60 + 10, 15)]
+        return xticks[0], xticks[-1], xticks
+
+    starts, stops = zip(*(slot2min(label) for label in labels))
+    xmin = min(starts)
+    xmax = max(stops)
+
+    tick_start = 15 * (xmin // 15)
+    tick_stop = 15 * ((xmax + 14) // 15)
+    xticks = list(range(tick_start, tick_stop + 1, 15))
+    return tick_start, tick_stop, xticks
+
+
+def schedule_axes(figsize, nslots=7, time_labels=None):
     """Create a matplotlib axis formatted for visit-day schedule plots.
 
     Parameters
@@ -56,6 +90,10 @@ def schedule_axes(figsize,nslots=7):
         Figure size passed to ``plt.subplots``.
     nslots:
         Number of schedule slots to display.
+    time_labels:
+        Optional concrete slot labels used to derive x-axis limits and ticks.
+        Accepts either an iterable of ``"H:MM-H:MM"`` strings or a
+        ``times_by_building``-style mapping.
 
     Returns
     -------
@@ -63,15 +101,14 @@ def schedule_axes(figsize,nslots=7):
         Configured axis with time ticks and grid lines.
     """
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    # 30 minute time slots, starting at 1:00 PM, + 10 minutes to
-    # draw the last tick
-    xticks = [i for i in range(60, 30*nslots + 60 + 10, 15)]
+    xmin, xmax, xticks = _schedule_tick_data(time_labels=time_labels, nslots=nslots)
     xlabels = [f"{t//60}:{t%60:02d}" for t in xticks]
+    ax.set_xlim(xmin, xmax)
     ax.set_xticks(ticks=xticks, labels=xlabels)
     for t in xticks:
         ax.axvline(t, lw=1, alpha=0.3, color='b')
     ax.spines[['left', 'top', 'right', 'bottom']].set_visible(False)
-    ax.set_xlabel("Time (PM)")
+    ax.set_xlabel("Time")
     return ax
     
 def slot2min(slot):
@@ -80,7 +117,9 @@ def slot2min(slot):
     Parameters
     ----------
     slot:
-        Schedule slot label in ``start-end`` format.
+        Schedule slot label in ``start-end`` format. Supports plain clock
+        times (``H:MM-H:MM``), 24-hour times (``13:00-13:25``), and
+        meridiem-qualified 12-hour times (``8:30 AM-8:55 AM``).
 
     Returns
     -------
@@ -88,18 +127,82 @@ def slot2min(slot):
         Start and end times in minutes.
     """
     if not isinstance(slot, str):
-        raise ValueError("Slot label must be a string in 'H:MM-H:MM' format.")
+        raise ValueError(
+            "Slot label must be a string in 'H:MM-H:MM', 'HH:MM-HH:MM', or "
+            "'H:MM AM-H:MM AM' format."
+        )
 
-    m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*", slot)
+    m = re.fullmatch(
+        r"\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])?\s*-\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])?\s*",
+        slot,
+    )
     if m is None:
-        raise ValueError(f"Invalid slot label '{slot}'. Expected 'H:MM-H:MM'.")
+        raise ValueError(
+            f"Invalid slot label '{slot}'. Expected 'H:MM-H:MM', 'HH:MM-HH:MM', or "
+            "'H:MM AM-H:MM AM'."
+        )
 
-    a, b, c, d = (int(m.group(i)) for i in range(1, 5))
-    if not (0 <= b < 60 and 0 <= d < 60):
+    start_hour = int(m.group(1))
+    start_minute = int(m.group(2))
+    start_meridiem = m.group(3)
+    end_hour = int(m.group(4))
+    end_minute = int(m.group(5))
+    end_meridiem = m.group(6)
+
+    if not (0 <= start_minute < 60 and 0 <= end_minute < 60):
         raise ValueError(f"Invalid slot label '{slot}'. Minutes must be in [00, 59].")
 
-    start = 60 * a + b
-    stop = 60 * c + d
+    if bool(start_meridiem) != bool(end_meridiem):
+        raise ValueError(
+            f"Invalid slot label '{slot}'. Start and end times must either both include "
+            "AM/PM or both omit it."
+        )
+
+    def _infer_ambiguous_hour(hour, minute):
+        if hour == 12:
+            return 12
+        if 1 <= hour <= 6:
+            return hour + 12
+        if 7 <= hour <= 11:
+            return hour
+        return None
+
+    def _warn_ambiguous_inference():
+        normalized = " ".join(slot.split())
+        if normalized in _AMBIGUOUS_SLOT_WARNINGS_EMITTED:
+            return
+        _AMBIGUOUS_SLOT_WARNINGS_EMITTED.add(normalized)
+        warnings.warn(
+            f"Ambiguous bare slot label '{slot}' was interpreted using visit-day heuristics. "
+            "Hours 12:00-12:59 and 1:00-6:59 are treated as PM; hours 7:00-11:59 are "
+            "treated as AM. Use AM/PM or 24-hour time to avoid ambiguity.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    def _to_minutes(hour, minute, meridiem):
+        if meridiem:
+            if not (1 <= hour <= 12):
+                raise ValueError(
+                    f"Invalid slot label '{slot}'. AM/PM times must use hours in [1, 12]."
+                )
+            meridiem = meridiem.lower()
+            hour = hour % 12
+            if meridiem == "pm":
+                hour += 12
+        else:
+            if not (0 <= hour <= 23):
+                raise ValueError(
+                    f"Invalid slot label '{slot}'. Unqualified times must use hours in [0, 23]."
+                )
+            inferred_hour = _infer_ambiguous_hour(hour, minute)
+            if inferred_hour is not None:
+                _warn_ambiguous_inference()
+                hour = inferred_hour
+        return 60 * hour + minute
+
+    start = _to_minutes(start_hour, start_minute, start_meridiem)
+    stop = _to_minutes(end_hour, end_minute, end_meridiem)
     if stop <= start:
         raise ValueError(f"Invalid slot label '{slot}'. End time must be after start time.")
     return start, stop
@@ -362,7 +465,11 @@ class SolutionResult:
         include_rank_in_filename=True,
     ):
         """Plot schedule grouped by faculty for this single solution."""
-        ax = schedule_axes(figsize=(12, 10), nslots=self.context.number_time_slots)
+        ax = schedule_axes(
+            figsize=(12, 10),
+            nslots=self.context.number_time_slots,
+            time_labels=self.context.times_by_building,
+        )
         yticks = [-y for y, _ in enumerate(self.faculty)]
         ylabels = [
             f"{f} {self.context.faculty[f]['building']} ({sum(1 for s in self.visitors for t in self.time_slots if self.meeting_assigned(s, f, t)):0.0f})"
@@ -412,7 +519,11 @@ class SolutionResult:
         include_rank_in_filename=True,
     ):
         """Plot schedule grouped by visitor for this single solution."""
-        ax = schedule_axes(figsize=(12, 10), nslots=self.context.number_time_slots)
+        ax = schedule_axes(
+            figsize=(12, 10),
+            nslots=self.context.number_time_slots,
+            time_labels=self.context.times_by_building,
+        )
         students = [abbreviate_name(s) if abbreviate_student_names else s for s in self.visitors]
         yticks = [-y for y, _ in enumerate(students)]
         ax.set_yticks(yticks, labels=students)

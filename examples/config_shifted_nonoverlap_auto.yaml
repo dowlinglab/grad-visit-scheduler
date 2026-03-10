@@ -1,6 +1,6 @@
 buildings:
-  BuildingA: ["1:00-1:25", "1:30-1:55", "2:00-2:25", "2:30-2:55"]
-  BuildingB: ["1:15-1:40", "1:45-2:10", "2:15-2:40", "2:45-3:10"]
+  BuildingA: ["1:00 PM-1:25 PM", "1:30 PM-1:55 PM", "2:00 PM-2:25 PM", "2:30 PM-2:55 PM"]
+  BuildingB: ["1:15 PM-1:40 PM", "1:45 PM-2:10 PM", "2:15 PM-2:40 PM", "2:45 PM-3:10 PM"]
 building_order: ["BuildingA", "BuildingB"]
 movement:
   policy: nonoverlap_time

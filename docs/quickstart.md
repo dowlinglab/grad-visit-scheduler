@@ -34,6 +34,8 @@ The scheduler expects three inputs.
 - Defines break slots (`breaks: [2, 3]` in this example).
 - Defines three topic areas: `Energy`, `Bio`, `Theory`.
 - Includes per-faculty availability conflicts.
+- Prefer explicit slot labels such as `1:00 PM-1:25 PM` or `13:00-13:25`.
+  Bare labels like `1:00-1:25` remain supported for compatibility but emit a warning.
 
 ### Visitor CSV (`data_formulation_visitors.csv`)
 

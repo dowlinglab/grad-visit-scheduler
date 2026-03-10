@@ -23,6 +23,10 @@ Each visitor is asked to rank up to four faculty members for meetings and to cho
 - A visitor preferences CSV file.
 
 Research areas are department-specific. In the included example data, they are represented as simple labels such as `Area1` and `Area2`, but you can define any set of areas in your faculty catalog.
+Time slots should be written with explicit `AM`/`PM` labels or 24-hour times
+such as `1:00 PM-1:25 PM` or `13:00-13:25`. Bare labels like `1:00-1:25`
+still work via a visit-day heuristic, but they emit a warning because they are
+ambiguous.
 
 ## What It Produces
 
@@ -110,6 +114,9 @@ else:
 Note: the `examples/` folder referenced above is included in the repository,
 but it is not packaged on PyPI. If you installed from PyPI, clone the repo
 to access the example files.
+
+All shipped example configs now use explicit `AM`/`PM` slot labels to avoid
+ambiguity warnings.
 
 ## Buildings and Movement
 
