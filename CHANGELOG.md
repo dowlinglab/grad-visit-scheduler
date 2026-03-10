@@ -12,6 +12,10 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 - Bare 12-hour slot labels now use a visit-day heuristic (`12:00-12:59` and
   `1:00-6:59` as PM, `7:00-11:59` as AM) and emit a `UserWarning` to encourage
   explicit `AM`/`PM` or 24-hour times.
+- `schedule_visitors(...)` and `schedule_visitors_top_n(...)` now accept
+  integer `enforce_breaks` values to require a configurable number of faculty
+  breaks while preserving `False -> 0` and `True -> 1` compatibility, with
+  clear validation for negative, non-integer, and impossible requested counts.
 - New plotting regression coverage for arbitrary absolute-time schedule axes and
   new slot-label parsing cases.
 
@@ -23,6 +27,8 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
   afternoon-only usage.
 - Visitor and faculty plots now omit redundant building names when a schedule
   has only one configured building.
+- Faculty break enforcement now counts faculty-unavailable slots toward the
+  requested break total and only forces additional explicit breaks when needed.
 - Shipped example configs, notebook snippets, and user-facing docs now use
   explicit `AM`/`PM` slot labels to avoid ambiguity warnings.
 - Documentation figure generation scripts now write directly into

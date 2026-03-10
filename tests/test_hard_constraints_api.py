@@ -48,6 +48,41 @@ def _build_scheduler(tmp_path: Path) -> Scheduler:
     )
 
 
+def _build_break_scheduler(
+    tmp_path: Path,
+    *,
+    visitor_rows: list[dict] | None = None,
+    slots: list[str] | None = None,
+    breaks: list[int] | None = None,
+    faculty_available: list[int] | None = None,
+) -> Scheduler:
+    """Build a small one-building scheduler for faculty-break tests."""
+    csv_path = tmp_path / "visitors_breaks.csv"
+    if visitor_rows is None:
+        visitor_rows = [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"}]
+    _write_csv(csv_path, visitor_rows)
+
+    if slots is None:
+        slots = ["8:30 AM-8:55 AM", "9:00 AM-9:25 AM", "9:30 AM-9:55 AM"]
+    times_by_building = {"Zoom": slots}
+    if breaks is not None:
+        times_by_building["breaks"] = breaks
+    if faculty_available is None:
+        faculty_available = list(range(1, len(slots) + 1))
+    faculty_catalog = {
+        "Faculty A": {"building": "Zoom", "room": "Zoom", "areas": ["Area1"], "status": "active"},
+    }
+    scheduler = Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        movement={"policy": "none", "phase_slot": {"Zoom": 1}},
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+    scheduler.faculty_limited_availability("Faculty A", faculty_available)
+    return scheduler
+
+
 def test_forbid_require_break_basic_and_idempotent_storage(tmp_path: Path):
     """APIs should accept valid calls and remain idempotent for duplicate rules."""
     s = _build_scheduler(tmp_path)
@@ -123,6 +158,154 @@ def test_require_meeting_respects_availability_early(tmp_path: Path):
     s.specify_limited_student_availability({"Visitor 1": [2], "Visitor 2": [1, 2]})
     with pytest.raises(ValueError, match="outside faculty or visitor availability"):
         s.require_meeting("Visitor 1", "Faculty A", time_slot=1)
+
+
+def test_enforce_breaks_false_disables_automatic_faculty_break_vars(tmp_path: Path):
+    """False should preserve the no-automatic-break behavior."""
+    s = _build_break_scheduler(tmp_path, breaks=[1, 2, 3])
+    s._build_model(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=1,
+        min_faculty=0,
+        max_group=1,
+        enforce_breaks=False,
+    )
+    assert not hasattr(s.model, "faculty_breaks")
+
+
+@pytest.mark.skipif(not _highs_available(), reason="HiGHS solver unavailable")
+@pytest.mark.parametrize("enforce_breaks", [True, 1])
+def test_enforce_breaks_true_and_one_require_one_faculty_break(tmp_path: Path, enforce_breaks):
+    """True and 1 should both preserve the historical one-break requirement."""
+    s = _build_break_scheduler(tmp_path, breaks=[1, 2])
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=1,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=enforce_breaks,
+        tee=False,
+        run_name="break_one",
+    )
+    assert sol is not None
+    count = sum(round(core_mod.pyo.value(s.model.faculty_breaks["Faculty A", t])) for t in s.model.break_options)
+    assert count == 1
+
+
+@pytest.mark.skipif(not _highs_available(), reason="HiGHS solver unavailable")
+def test_enforce_breaks_integer_two_requires_two_faculty_breaks(tmp_path: Path):
+    """A positive integer should require that many faculty breaks."""
+    s = _build_break_scheduler(tmp_path, breaks=[1, 2, 3])
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=1,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=2,
+        tee=False,
+        run_name="break_two",
+    )
+    assert sol is not None
+    count = sum(round(core_mod.pyo.value(s.model.faculty_breaks["Faculty A", t])) for t in s.model.break_options)
+    assert count == 2
+
+
+@pytest.mark.skipif(not _highs_available(), reason="HiGHS solver unavailable")
+def test_unavailable_faculty_slots_count_toward_requested_breaks(tmp_path: Path):
+    """Limited-availability slots outside the break window should count as breaks."""
+    s = _build_break_scheduler(
+        tmp_path,
+        slots=["8:30 AM-8:55 AM", "9:00 AM-9:25 AM", "9:30 AM-9:55 AM"],
+        breaks=[1, 2],
+        faculty_available=[1, 2],
+    )
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=1,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=2,
+        tee=False,
+        run_name="break_unavailable_counts",
+    )
+    assert sol is not None
+    count = sum(round(core_mod.pyo.value(s.model.faculty_breaks["Faculty A", t])) for t in s.model.break_options)
+    assert count == 1
+
+
+def test_invalid_enforce_break_values_raise_clear_errors(tmp_path: Path):
+    """Negative and non-integer break counts should be rejected."""
+    s = _build_break_scheduler(tmp_path, breaks=[1, 2, 3])
+    for bad in (-1, "two", 1.5):
+        with pytest.raises(ValueError, match="enforce_breaks"):
+            s._build_model(
+                group_penalty=0.1,
+                min_visitors=0,
+                max_visitors=1,
+                min_faculty=0,
+                max_group=1,
+                enforce_breaks=bad,
+            )
+
+
+def test_enforce_breaks_rejects_impossible_break_count(tmp_path: Path):
+    """Requested break counts above the break capacity should fail early."""
+    s = _build_break_scheduler(tmp_path, breaks=[2], faculty_available=[1, 2, 3])
+    with pytest.raises(ValueError, match="maximum possible faculty breaks"):
+        s._build_model(
+            group_penalty=0.1,
+            min_visitors=0,
+            max_visitors=1,
+            min_faculty=0,
+            max_group=1,
+            enforce_breaks=2,
+        )
+
+
+@pytest.mark.skipif(not _highs_available(), reason="HiGHS solver unavailable")
+def test_enforce_breaks_can_make_schedule_infeasible(tmp_path: Path):
+    """A feasible break count can still make the solve infeasible once meeting bounds apply."""
+    s = _build_break_scheduler(
+        tmp_path,
+        visitor_rows=[
+            {"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"},
+            {"Name": "Visitor 2", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area1"},
+        ],
+        breaks=[1, 2, 3],
+    )
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=2,
+        max_visitors=2,
+        min_faculty=0,
+        max_group=1,
+        enforce_breaks=2,
+        tee=False,
+        run_name="break_infeasible",
+    )
+    assert sol is None
+
+
+@pytest.mark.skipif(not _highs_available(), reason="HiGHS solver unavailable")
+def test_schedule_visitors_top_n_accepts_integer_enforce_breaks(tmp_path: Path):
+    """Top-N solve path should accept the generalized break-count interface."""
+    s = _build_break_scheduler(tmp_path, breaks=[1, 2, 3])
+    top = s.schedule_visitors_top_n(
+        n_solutions=1,
+        group_penalty=0.1,
+        min_visitors=1,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=2,
+        tee=False,
+        run_name="break_top_n",
+    )
+    assert len(top) == 1
 
 
 def test_require_meeting_no_slot_form_error_paths(tmp_path: Path):

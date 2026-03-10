@@ -282,4 +282,6 @@ Legacy modes are still available with `FutureWarning` and map to movement config
 Break nuance:
 
 - Legacy `Mode.NO_OFFSET` implicitly enforces break constraints by default.
-- Movement-only configs do not imply breaks; set `enforce_breaks=True` if needed.
+- Movement-only configs do not imply breaks; set `enforce_breaks=True` for the
+  historical one-break rule or pass an integer such as `enforce_breaks=2` to
+  require multiple faculty breaks.

@@ -149,7 +149,10 @@ The solver exposes several tunable parameters on `schedule_visitors` to refine t
 - `max_visitors`: maximum number of visitors each faculty member may meet.
 - `min_faculty`: minimum number of faculty each visitor must meet.
 - `max_group`: maximum size of a meeting group at any time slot.
-- `enforce_breaks`: force breaks for visitors and faculty during the configured break window.
+- `enforce_breaks`: automatic break control. Use `False` for no automatic
+  breaks, `True` for the historical one-break rule, or an integer like `2` to
+  require that many faculty breaks while still enforcing the usual one visitor
+  break in the configured break window.
 - `debug_infeasible`: if `True`, build the model before raising pre-solve contradiction errors (useful for IIS/manual inspection of `s.model`).
 - `tee`: print solver output for debugging.
 - `run_name`: label used when saving plots/exports.
@@ -160,7 +163,7 @@ infeasibility workflows, see [`docs/advanced_customization.md`](docs/advanced_cu
 To generate multiple ranked schedules, use no-good cuts:
 
 ```python
-top = s.schedule_visitors_top_n(n_solutions=3, enforce_breaks=True)
+top = s.schedule_visitors_top_n(n_solutions=3, enforce_breaks=2)
 report = top.summarize(ranks_to_plot=(1, 2), show_solution_rank=True)
 print(report["summary"])
 print(report["compact"])
