@@ -21,6 +21,8 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
   template starting at 1:00 PM.
 - Plot x-axis labeling is now generic (`Time`) rather than hard-coded to
   afternoon-only usage.
+- Visitor and faculty plots now omit redundant building names when a schedule
+  has only one configured building.
 - Shipped example configs, notebook snippets, and user-facing docs now use
   explicit `AM`/`PM` slot labels to avoid ambiguity warnings.
 - Documentation figure generation scripts now write directly into

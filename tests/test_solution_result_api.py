@@ -104,7 +104,7 @@ def _build_two_slot_single_faculty_scheduler(tmp_path: Path) -> Scheduler:
     return Scheduler(
         times_by_building=times_by_building,
         student_data_filename=str(csv_path),
-        mode=Mode.BUILDING_A_FIRST,
+        movement={"policy": "none", "phase_slot": {"Zoom": 1}},
         solver=Solver.HIGHS,
         faculty_catalog=faculty_catalog,
     )
@@ -130,7 +130,32 @@ def _build_morning_scheduler(tmp_path: Path) -> Scheduler:
     return Scheduler(
         times_by_building=times_by_building,
         student_data_filename=str(csv_path),
-        mode=Mode.BUILDING_A_FIRST,
+        movement={"policy": "none", "phase_slot": {"Zoom": 1}},
+        solver=Solver.HIGHS,
+        faculty_catalog=faculty_catalog,
+    )
+
+
+def _build_single_building_scheduler(tmp_path: Path) -> Scheduler:
+    """Build a tiny one-building scheduler for single-building plot labeling checks."""
+    csv_path = tmp_path / "visitors_one_building.csv"
+    csv_path.write_text("Name,Prof1,Area1,Area2\nVisitor 1,Faculty A,Area1,Area1\n", encoding="utf-8")
+
+    times_by_building = {
+        "Zoom": ["8:30 AM-8:55 AM", "9:00 AM-9:25 AM"],
+    }
+    faculty_catalog = {
+        "Faculty A": {
+            "building": "Zoom",
+            "room": "Zoom",
+            "areas": ["Area1"],
+            "status": "active",
+        }
+    }
+    return Scheduler(
+        times_by_building=times_by_building,
+        student_data_filename=str(csv_path),
+        movement={"policy": "none", "phase_slot": {"Zoom": 1}},
         solver=Solver.HIGHS,
         faculty_catalog=faculty_catalog,
     )
@@ -288,6 +313,35 @@ def test_plot_schedule_axes_follow_morning_slot_times(tmp_path: Path):
     assert ax.get_xlabel() == "Time"
     assert ax.get_xlim() == pytest.approx((510, 660))
     assert [tick.get_text() for tick in ax.get_xticklabels()[:4]] == ["8:30", "8:45", "9:00", "9:15"]
+
+
+@pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
+def test_single_building_plots_hide_redundant_building_labels(tmp_path: Path):
+    """Single-building schedules should omit building names from plot labels."""
+    s = _build_single_building_scheduler(tmp_path)
+    sol = s.schedule_visitors(
+        group_penalty=0.1,
+        min_visitors=0,
+        max_visitors=1,
+        min_faculty=1,
+        max_group=1,
+        enforce_breaks=False,
+        tee=False,
+        run_name="single_building_labels",
+    )
+    assert sol is not None
+
+    sol.plot_visitor_schedule(save_files=False, show_solution_rank=False, abbreviate_student_names=False)
+    visitor_ax = plt.gcf().axes[0]
+    visitor_texts = [text.get_text() for text in visitor_ax.texts]
+    assert "Faculty A" in visitor_texts
+    assert all("(Zoom)" not in text for text in visitor_texts)
+
+    sol.plot_faculty_schedule(save_files=False, show_solution_rank=False, abbreviate_student_names=False)
+    faculty_ax = plt.gcf().axes[0]
+    faculty_labels = [tick.get_text() for tick in faculty_ax.get_yticklabels()]
+    assert "Faculty A (1)" in faculty_labels
+    assert all("Zoom" not in label for label in faculty_labels)
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")

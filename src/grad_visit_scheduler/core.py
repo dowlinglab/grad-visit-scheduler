@@ -457,6 +457,11 @@ class SolutionResult:
             name += suffix
         return name
 
+    def _show_building_labels(self):
+        """Return whether plot labels should include building names."""
+        buildings = [name for name in self.context.times_by_building if name != "breaks"]
+        return len(buildings) > 1
+
     def plot_faculty_schedule(
         self,
         save_files=True,
@@ -470,11 +475,17 @@ class SolutionResult:
             nslots=self.context.number_time_slots,
             time_labels=self.context.times_by_building,
         )
+        show_building_labels = self._show_building_labels()
         yticks = [-y for y, _ in enumerate(self.faculty)]
-        ylabels = [
-            f"{f} {self.context.faculty[f]['building']} ({sum(1 for s in self.visitors for t in self.time_slots if self.meeting_assigned(s, f, t)):0.0f})"
-            for f in self.faculty
-        ]
+        ylabels = []
+        for f in self.faculty:
+            meeting_count = sum(
+                1 for s in self.visitors for t in self.time_slots if self.meeting_assigned(s, f, t)
+            )
+            if show_building_labels:
+                ylabels.append(f"{f} {self.context.faculty[f]['building']} ({meeting_count:0.0f})")
+            else:
+                ylabels.append(f"{f} ({meeting_count:0.0f})")
         ax.set_yticks(yticks, labels=ylabels)
         for f, label in zip(self.faculty, ax.get_yticklabels()):
             if self.context.is_legacy(f):
@@ -524,6 +535,7 @@ class SolutionResult:
             nslots=self.context.number_time_slots,
             time_labels=self.context.times_by_building,
         )
+        show_building_labels = self._show_building_labels()
         students = [abbreviate_name(s) if abbreviate_student_names else s for s in self.visitors]
         yticks = [-y for y, _ in enumerate(students)]
         ax.set_yticks(yticks, labels=students)
@@ -547,7 +559,8 @@ class SolutionResult:
                     solid_capstyle="butt",
                 )
                 text_color = "red" if self.context.is_legacy(f) else "black"
-                ax.text((start + stop) / 2, -y, f"{f} ({bldg})", ha="center", va="center", fontsize=8, color=text_color)
+                label = f"{f} ({bldg})" if show_building_labels else f"{f}"
+                ax.text((start + stop) / 2, -y, label, ha="center", va="center", fontsize=8, color=text_color)
 
         title = "Schedule by Visitors"
         if show_solution_rank:
