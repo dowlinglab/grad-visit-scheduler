@@ -190,21 +190,24 @@ def slot2min(slot):
             hour = hour % 12
             if meridiem == "pm":
                 hour += 12
+            ambiguous = False
         else:
             if not (0 <= hour <= 23):
                 raise ValueError(
                     f"Invalid slot label '{slot}'. Unqualified times must use hours in [0, 23]."
                 )
             inferred_hour = _infer_ambiguous_hour(hour, minute)
+            ambiguous = inferred_hour is not None
             if inferred_hour is not None:
-                _warn_ambiguous_inference()
                 hour = inferred_hour
-        return 60 * hour + minute
+        return 60 * hour + minute, ambiguous
 
-    start = _to_minutes(start_hour, start_minute, start_meridiem)
-    stop = _to_minutes(end_hour, end_minute, end_meridiem)
+    start, start_ambiguous = _to_minutes(start_hour, start_minute, start_meridiem)
+    stop, stop_ambiguous = _to_minutes(end_hour, end_minute, end_meridiem)
     if stop <= start:
         raise ValueError(f"Invalid slot label '{slot}'. End time must be after start time.")
+    if start_ambiguous or stop_ambiguous:
+        _warn_ambiguous_inference()
     return start, stop
 
 

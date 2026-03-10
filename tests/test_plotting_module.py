@@ -4,7 +4,16 @@ import warnings
 
 import pytest
 
+import grad_visit_scheduler.core as core_mod
 from grad_visit_scheduler import plotting
+
+
+@pytest.fixture(autouse=True)
+def _reset_ambiguous_slot_warning_cache():
+    """Keep per-label warning tests isolated from module-global cache state."""
+    core_mod._AMBIGUOUS_SLOT_WARNINGS_EMITTED.clear()
+    yield
+    core_mod._AMBIGUOUS_SLOT_WARNINGS_EMITTED.clear()
 
 
 def test_plotting_module_exports_core_helpers():
@@ -28,11 +37,11 @@ def test_schedule_axes_uses_concrete_time_labels_for_ticks_and_limits():
         figsize=(4, 3),
         time_labels={
             "Virtual": [
-                "8:30-8:55",
-                "9:00-9:25",
-                "9:30-9:55",
-                "10:00-10:25",
-                "10:30-10:55",
+                "8:30 AM-8:55 AM",
+                "9:00 AM-9:25 AM",
+                "9:30 AM-9:55 AM",
+                "10:00 AM-10:25 AM",
+                "10:30 AM-10:55 AM",
             ]
         },
     )

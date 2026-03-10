@@ -17,6 +17,9 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
   for negative, non-integer, and impossible requested counts.
 - New plotting regression coverage for arbitrary absolute-time schedule axes and
   new slot-label parsing cases.
+- Additional warning-isolation regression coverage now prevents ambiguous-slot
+  parser warning state from leaking across tests, and movement warning tests
+  now use explicit slot labels where warning precedence matters.
 
 ### Changed
 - Schedule plotting now derives x-axis limits and tick labels from the actual

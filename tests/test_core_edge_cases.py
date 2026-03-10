@@ -549,11 +549,11 @@ def test_none_policy_warning_truncates_many_risky_pairs(tmp_path: Path):
     csv_path = tmp_path / "v.csv"
     _write_csv(csv_path, [{"Name": "Visitor 1", "Prof1": "Faculty A", "Area1": "Area1", "Area2": "Area2"}])
     times = {
-        "A": ["1:00-1:25", "1:30-1:55"],
-        "B": ["1:05-1:30", "1:35-2:00"],
-        "C": ["1:10-1:35", "1:40-2:05"],
-        "D": ["1:15-1:40", "1:45-2:10"],
-        "E": ["1:20-1:45", "1:50-2:15"],
+        "A": ["1:00 PM-1:25 PM", "1:30 PM-1:55 PM"],
+        "B": ["1:05 PM-1:30 PM", "1:35 PM-2:00 PM"],
+        "C": ["1:10 PM-1:35 PM", "1:40 PM-2:05 PM"],
+        "D": ["1:15 PM-1:40 PM", "1:45 PM-2:10 PM"],
+        "E": ["1:20 PM-1:45 PM", "1:50 PM-2:15 PM"],
     }
     faculty_catalog = {
         "Faculty A": {"building": "A", "room": "101", "areas": ["Area1"], "status": "active"},
