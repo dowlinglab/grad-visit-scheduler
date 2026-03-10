@@ -35,6 +35,9 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
   `(faculty_breaks=1, student_breaks=1)`, respectively.
 - Shipped example configs, notebook snippets, and user-facing docs now use
   explicit `AM`/`PM` slot labels to avoid ambiguity warnings.
+- `docs/formulation.md` now matches the current split break model, including
+  separate `faculty_breaks` / `student_breaks` semantics and the
+  compatibility behavior of legacy `enforce_breaks`.
 - Documentation figure generation scripts now write directly into
   `docs/_static`, and the movement-figure refresh script suppresses its known
   expected shifted-clock warning for cleaner output.
