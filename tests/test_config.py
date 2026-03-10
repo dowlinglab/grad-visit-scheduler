@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import re
+
 from grad_visit_scheduler import scheduler_from_configs, Solver
 from grad_visit_scheduler.core import slot2min
 from grad_visit_scheduler.config import load_faculty_catalog, load_run_config
@@ -86,3 +88,17 @@ def test_shifted_nonoverlap_example_solves_without_real_time_overlap():
     assert sol is not None
     assert s.movement_policy == "nonoverlap_time"
     assert not _has_real_time_overlap(sol)
+
+
+def test_example_run_configs_use_explicit_slot_labels():
+    """Shipped example run configs should avoid ambiguous bare slot labels."""
+    root = Path(__file__).parents[1] / "examples"
+    explicit_slot = re.compile(r"^\d{1,2}:\d{2}\s*([AaPp][Mm])$|^\d{2}:\d{2}$")
+
+    for config_path in sorted(root.glob("config*.yaml")):
+        run_cfg = load_run_config(config_path)
+        for slots in run_cfg["buildings"].values():
+            for slot in slots:
+                start, stop = [part.strip() for part in slot.split("-", 1)]
+                assert explicit_slot.fullmatch(start), f"{config_path.name} has ambiguous slot start: {slot}"
+                assert explicit_slot.fullmatch(stop), f"{config_path.name} has ambiguous slot end: {slot}"

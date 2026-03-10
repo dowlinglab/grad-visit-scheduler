@@ -40,8 +40,8 @@ Faculty-view schedule:
 How to interpret these schedules:
 
 - `ABC` and `XYZ` are building abbreviations from the run config. The box color (blue versus green) also indicates the building.
-- In visitor-view plots, labels are `Faculty (Building)` and blank slots indicate breaks or travel windows.
-- In faculty-view plots, the number in parentheses next to each faculty name is that faculty member's total number of scheduled meetings.
+- In visitor-view plots, labels are `Faculty (Building)` for multi-building schedules and just `Faculty` for single-building schedules. Blank slots indicate breaks or travel windows.
+- In faculty-view plots, the number in parentheses next to each faculty name is that faculty member's total number of scheduled meetings. Single-building schedules omit the redundant building name.
 
 Full setup, model details, and solver outputs are documented in [Quickstart](quickstart.md) and [Mathematical Formulation](formulation.md).
 

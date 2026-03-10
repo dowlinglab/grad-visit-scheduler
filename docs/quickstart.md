@@ -116,8 +116,8 @@ Schedule plots from this example:
 How to interpret these plots:
 
 - `ABC` and `XYZ` are building abbreviations from `config_formulation.yaml`. The box color (blue versus green) also indicates the building.
-- Visitor-view bars are labeled `Faculty (Building)`. Missing blocks indicate breaks/travel slots.
-- In the faculty-view y-axis labels, the number in parentheses is each faculty member's total scheduled meetings. Missing blocks indicate faculty conflict. Blocks without a visitor name indicate a break (unused meeting).
+- Visitor-view bars are labeled `Faculty (Building)` for multi-building schedules and just `Faculty` for single-building schedules. Missing blocks indicate breaks/travel slots.
+- In the faculty-view y-axis labels, the number in parentheses is each faculty member's total scheduled meetings. Single-building schedules omit the redundant building name. Missing blocks indicate faculty conflict. Blocks without a visitor name indicate a break (unused meeting).
 
 Preferred DOCX export path:
 
