@@ -6,6 +6,8 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-11
+
 ### Added
 - `slot2min(...)` now accepts explicit meridiem-qualified slot labels such as
   `8:30 AM-8:55 AM` in addition to 24-hour labels such as `13:00-13:25`.
