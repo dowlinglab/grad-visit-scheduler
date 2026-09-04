@@ -12,6 +12,7 @@ import pytest
 import pyomo.environ as pyo
 from pyomo.common.errors import ApplicationError
 
+import grad_visit_scheduler.core as core_mod
 from grad_visit_scheduler import (
     Scheduler,
     Mode,
@@ -342,6 +343,180 @@ def test_single_building_plots_hide_redundant_building_labels(tmp_path: Path):
     faculty_labels = [tick.get_text() for tick in faculty_ax.get_yticklabels()]
     assert "Faculty A (1)" in faculty_labels
     assert all("Zoom" not in label for label in faculty_labels)
+
+
+def _manual_solution(num_visitors, faculty_names, num_slots=1, two_buildings=False):
+    """Build a SolutionResult by hand (no solver) for fast plotting-geometry tests."""
+    slot_labels = tuple(f"{h}:00 PM-{h}:25 PM" for h in range(1, 1 + num_slots))
+    times_by_building = {"NSH": slot_labels}
+    if two_buildings:
+        times_by_building["MCH"] = slot_labels
+
+    faculty = {}
+    for i, name in enumerate(faculty_names):
+        bldg = "NSH" if not two_buildings or i % 2 == 0 else "MCH"
+        faculty[name] = {"building": bldg, "room": "", "avail": tuple(range(1, num_slots + 1)), "areas": ()}
+
+    context = core_mod.SolutionContext(
+        times_by_building=times_by_building,
+        faculty=faculty,
+        box_colors={"NSH": "#8ecae6", "MCH": "#90be6d"},
+        number_time_slots=num_slots,
+        run_name="",
+        student_preferences={},
+        requests={},
+        legacy_faculty=frozenset(),
+        external_faculty=frozenset(),
+    )
+
+    visitors = tuple(f"Visitor {i:02d}" for i in range(1, num_visitors + 1))
+    active_meetings = {
+        (visitor, faculty_names[i % len(faculty_names)], (i % num_slots) + 1)
+        for i, visitor in enumerate(visitors)
+    }
+
+    return core_mod.SolutionResult(
+        rank=1,
+        objective_value=0.0,
+        termination_condition="optimal",
+        solver_status="ok",
+        visitors=visitors,
+        faculty=tuple(faculty_names),
+        time_slots=tuple(range(1, num_slots + 1)),
+        active_meetings=frozenset(active_meetings),
+        context=context,
+    )
+
+
+def _assert_labels_fit_inside_boxes(fig, ax):
+    """Every drawn label's bbox must stay inside its own box's bbox (both axes).
+
+    ``Line2D.get_window_extent()`` reports the geometric extent of the path
+    (zero height for a horizontal segment), not the rendered stroke -- so
+    the box's real on-screen bbox is reconstructed from its xdata plus its
+    linewidth in points.
+    """
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    boxes = [ln for ln in ax.get_lines() if ln.get_linewidth() > 1]
+    texts = [t for t in ax.texts if t.get_text()]
+    assert texts, "expected at least one label to check"
+
+    for text in texts:
+        tbb = text.get_window_extent(renderer=renderer)
+        tx, ty = text.get_position()
+        box = next(
+            ln
+            for ln in boxes
+            if abs(ln.get_ydata()[0] - ty) < 1e-6
+            and min(ln.get_xdata()) - 1e-6 <= tx <= max(ln.get_xdata()) + 1e-6
+        )
+        x0, _ = ax.transData.transform((min(box.get_xdata()), box.get_ydata()[0]))
+        x1, _ = ax.transData.transform((max(box.get_xdata()), box.get_ydata()[0]))
+        box_width = abs(x1 - x0)
+        box_height = box.get_linewidth() * fig.dpi / 72.0
+
+        assert tbb.width <= box_width + 1e-6, f"label {text.get_text()!r} overruns box width"
+        assert tbb.height <= box_height + 1e-6, f"label {text.get_text()!r} overruns box height"
+
+
+def _assert_rows_dont_collide(ax):
+    """Adjacent rows' boxes must not vertically overlap."""
+    fig = ax.figure
+    boxes = [ln for ln in ax.get_lines() if ln.get_linewidth() > 1]
+    row_ys = sorted({ln.get_ydata()[0] for ln in boxes}, reverse=True)
+    if len(row_ys) < 2:
+        return
+    row_spacing_px = abs(
+        ax.transData.transform((0, row_ys[0]))[1] - ax.transData.transform((0, row_ys[1]))[1]
+    )
+    max_box_height_px = max(ln.get_linewidth() * fig.dpi / 72.0 for ln in boxes)
+    assert row_spacing_px >= max_box_height_px, "adjacent rows' boxes collide"
+
+
+@pytest.mark.parametrize("fontsize", [8, 20])
+def test_plot_schedules_keep_long_labels_inside_their_boxes(fontsize):
+    """A long faculty name at a bumped fontsize should still fit inside its box.
+
+    Regression test for label text overrunning its drawn box: without a
+    text-measurement pass tying figure width to the worst-case label width,
+    a label like "Bergerson (NSH)" can render wider than the box behind it.
+    """
+    sol = _manual_solution(
+        num_visitors=3,
+        faculty_names=["Bergerson", "A. Very Long Faculty Name"],
+        num_slots=1,
+        two_buildings=True,
+    )
+
+    sol.plot_visitor_schedule(save_files=False, fontsize=fontsize)
+    _assert_labels_fit_inside_boxes(plt.gcf(), plt.gcf().axes[0])
+    plt.close(plt.gcf())
+
+    sol.plot_faculty_schedule(save_files=False, fontsize=fontsize)
+    _assert_labels_fit_inside_boxes(plt.gcf(), plt.gcf().axes[0])
+    plt.close(plt.gcf())
+
+
+def test_plot_schedule_figure_height_scales_with_row_count():
+    """Figure height should track visitor/faculty row count, not a fixed constant.
+
+    Regression test for a hardcoded figsize: a sparse schedule (few rows)
+    should render compactly, not inherit the same height as a dense one.
+    """
+    sparse = _manual_solution(num_visitors=1, faculty_names=["Faculty A"], num_slots=1)
+    dense = _manual_solution(num_visitors=12, faculty_names=[f"Faculty {i}" for i in range(8)], num_slots=1)
+
+    sparse.plot_visitor_schedule(save_files=False)
+    sparse_visitor_height = plt.gcf().get_size_inches()[1]
+    plt.close(plt.gcf())
+
+    dense.plot_visitor_schedule(save_files=False)
+    dense_visitor_height = plt.gcf().get_size_inches()[1]
+    plt.close(plt.gcf())
+
+    assert sparse_visitor_height < dense_visitor_height
+    assert sparse_visitor_height < 10  # old fixed height was 10in regardless of row count
+
+    sparse.plot_faculty_schedule(save_files=False)
+    sparse_faculty_height = plt.gcf().get_size_inches()[1]
+    plt.close(plt.gcf())
+
+    dense.plot_faculty_schedule(save_files=False)
+    dense_faculty_height = plt.gcf().get_size_inches()[1]
+    plt.close(plt.gcf())
+
+    assert sparse_faculty_height < dense_faculty_height
+    assert sparse_faculty_height < 10
+
+
+@pytest.mark.parametrize("fontsize", [8, 20])
+def test_plot_schedule_tight_option_shrinks_height_without_overrun_or_collision(fontsize):
+    """``tight=True`` should shrink height while keeping labels fitted and rows separated.
+
+    Regression test for the vertical-whitespace option: it must actually
+    reduce height relative to the default, without reintroducing either a
+    label/box overrun or adjacent rows' boxes colliding.
+    """
+    sol = _manual_solution(
+        num_visitors=6,
+        faculty_names=["Bergerson", "A. Very Long Faculty Name", "Prof. C", "Prof. D"],
+        num_slots=2,
+        two_buildings=True,
+    )
+
+    for plot_fn in (sol.plot_visitor_schedule, sol.plot_faculty_schedule):
+        plot_fn(save_files=False, fontsize=fontsize, tight=False)
+        loose_height = plt.gcf().get_size_inches()[1]
+        plt.close(plt.gcf())
+
+        plot_fn(save_files=False, fontsize=fontsize, tight=True)
+        tight_fig = plt.gcf()
+        tight_ax = tight_fig.axes[0]
+        _assert_labels_fit_inside_boxes(tight_fig, tight_ax)
+        _assert_rows_dont_collide(tight_ax)
+        assert tight_fig.get_size_inches()[1] < loose_height
+        plt.close(tight_fig)
 
 
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")

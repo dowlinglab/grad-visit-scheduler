@@ -110,7 +110,106 @@ def schedule_axes(figsize, nslots=7, time_labels=None):
     ax.spines[['left', 'top', 'right', 'bottom']].set_visible(False)
     ax.set_xlabel("Time")
     return ax
-    
+
+
+def _measure_label_widths_pts(fig, ax, labels, fontsize):
+    """Return the rendered width, in points, of each label at ``fontsize``.
+
+    Draws each label invisibly on ``ax``, measures it via
+    ``fig.canvas.get_renderer()`` and ``Text.get_window_extent()``, then
+    removes it. This is a dry-run measurement pass so figure sizing can
+    react to the actual rendered geometry of a label instead of a guess.
+    """
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    widths = []
+    for label in labels:
+        text = ax.text(0, 0, label, fontsize=fontsize, alpha=0)
+        widths.append(text.get_window_extent(renderer=renderer).width * 72.0 / fig.dpi)
+        text.remove()
+    return widths
+
+
+def _box_width_pts(fig, ax, duration_minutes):
+    """Return the on-screen width, in points, of a box spanning ``duration_minutes``.
+
+    ``ax.transData`` is an affine transform, so the pixel distance between
+    two x-values depends only on their difference, not their absolute
+    position -- this works regardless of where the axes' xlim starts.
+    """
+    x0 = ax.transData.transform((0, 0))[0]
+    x1 = ax.transData.transform((duration_minutes, 0))[0]
+    return abs(x1 - x0) * 72.0 / fig.dpi
+
+
+# Empirically tuned geometry constants for auto-sizing schedule figures
+# (against the formulation demo, a sparse single-visitor case, and the real
+# ND CBE 2026 roster). _ROW_HEIGHT_TO_LW_RATIO ties row spacing to lw (itself
+# derived from fontsize) so rows keep a comfortable gap around their boxes
+# at any fontsize, instead of boxes colliding with their neighbors once lw
+# grows past a fixed row height: at the default fontsize=8 (lw=20pt), this
+# reproduces the previously-tuned 0.6in row spacing. _ROW_HEIGHT_TO_LW_RATIO_TIGHT
+# backs the ``tight=True`` plotting option: just enough gap for rows to stay
+# visually distinct, for callers who want minimal vertical whitespace over
+# comfortable row spacing.
+_ROW_HEIGHT_TO_LW_RATIO = 2.16
+_ROW_HEIGHT_TO_LW_RATIO_TIGHT = 1.3
+_SLOT_WIDTH_IN = 1.5
+_SLOT_MARGIN_IN = 2.5
+
+
+def _base_schedule_figsize(num_rows, num_slots, lw, tight=False):
+    """Return a first-pass figsize sized from row count, slot count, and lw.
+
+    Height scales with the number of rows actually drawn (visitors or
+    faculty) and with ``lw`` (box height, itself derived from fontsize), so
+    neither a sparse schedule nor a large fontsize inherits a mismatched
+    fixed constant. The row-count*row-height figure divides out matplotlib's
+    default axes-height fraction (the ``figure.subplot`` top/bottom rcParams)
+    rather than adding a flat margin, since that fraction -- not a fixed
+    inch count -- is what the title/x-axis area actually costs regardless of
+    total figure height. Width scales with the number of time slots shown;
+    ``_fit_schedule_figsize`` may widen it further if a label would
+    otherwise overrun its box. ``tight`` swaps in a smaller row-to-box ratio,
+    for callers who want minimal vertical whitespace over comfortable row
+    spacing.
+    """
+    ratio = _ROW_HEIGHT_TO_LW_RATIO_TIGHT if tight else _ROW_HEIGHT_TO_LW_RATIO
+    row_height_in = (lw * ratio) / 72.0
+    axes_height_fraction = plt.rcParams["figure.subplot.top"] - plt.rcParams["figure.subplot.bottom"]
+    height = (max(1, num_rows) * row_height_in) / axes_height_fraction
+    width = max(1, num_slots) * _SLOT_WIDTH_IN + _SLOT_MARGIN_IN
+    return (width, height)
+
+
+def _fit_schedule_figsize(base_figsize, nslots, time_labels, min_duration_minutes, worst_labels, fontsize, margin=1.15):
+    """Widen ``base_figsize`` so ``worst_labels`` fit inside the narrowest schedule box.
+
+    Box width is schedule-driven: it falls out of slot duration, figsize,
+    and the axes' time range, with no dependency on the label text or
+    fontsize. So a label that overruns its box can only be fixed by growing
+    the figure (which grows the box), not by any per-box parameter. This
+    renders a throwaway probe figure at ``base_figsize`` to measure the
+    worst-case label width and the pixel width implied by
+    ``min_duration_minutes``, then widens the figure -- height is left alone,
+    since it is already sized from row count -- by the ratio needed to fit,
+    plus a safety margin.
+    """
+    probe_ax = schedule_axes(figsize=base_figsize, nslots=nslots, time_labels=time_labels)
+    probe_fig = probe_ax.figure
+    try:
+        label_widths = _measure_label_widths_pts(probe_fig, probe_ax, worst_labels, fontsize)
+        if not label_widths:
+            return base_figsize
+        box_width = _box_width_pts(probe_fig, probe_ax, min_duration_minutes)
+        if box_width <= 0:
+            return base_figsize
+        scale = max(1.0, (max(label_widths) / box_width) * margin)
+    finally:
+        plt.close(probe_fig)
+    return (base_figsize[0] * scale, base_figsize[1])
+
+
 def slot2min(slot):
     """Convert a slot string like ``'1:00-1:25'`` to integer minutes.
 
@@ -471,13 +570,10 @@ class SolutionResult:
         abbreviate_student_names=True,
         show_solution_rank=False,
         include_rank_in_filename=True,
+        fontsize=8,
+        tight=False,
     ):
         """Plot schedule grouped by faculty for this single solution."""
-        ax = schedule_axes(
-            figsize=(12, 10),
-            nslots=self.context.number_time_slots,
-            time_labels=self.context.times_by_building,
-        )
         show_building_labels = self._show_building_labels()
         yticks = [-y for y, _ in enumerate(self.faculty)]
         ylabels = []
@@ -489,30 +585,58 @@ class SolutionResult:
                 ylabels.append(f"{f} {self.context.faculty[f]['building']} ({meeting_count:0.0f})")
             else:
                 ylabels.append(f"{f} ({meeting_count:0.0f})")
-        ax.set_yticks(yticks, labels=ylabels)
-        for f, label in zip(self.faculty, ax.get_yticklabels()):
-            if self.context.is_legacy(f):
-                label.set_color("red")
-        for y in yticks:
-            ax.axhline(y, lw=0.4, alpha=0.3, color="b")
 
+        boxes = []
         for y, f in enumerate(self.faculty):
             for t in self.context.faculty[f]["avail"]:
                 bldg = self.context.faculty[f]["building"]
                 start, stop = slot2min(self.context.times_by_building[bldg][t - 1])
-                ax.plot(
-                    [start, stop],
-                    [-y, -y],
-                    lw=20,
-                    color=self.context.box_colors.get(bldg, "#cccccc"),
-                    alpha=BOX_ALPHA,
-                    solid_capstyle="butt",
-                )
                 students = [s for s in self.visitors if self.meeting_assigned(s, f, t)]
                 if abbreviate_student_names:
                     students = [abbreviate_name(s) for s in students]
-                if students:
-                    ax.text((start + stop) / 2, -y, "\n ".join(students), ha="center", va="center", fontsize=8)
+                label = "\n ".join(students) if students else None
+                boxes.append((y, start, stop, bldg, label))
+
+        # Box height (lw) is derived from fontsize -- rather than set
+        # independently -- so the two stay in proportion as fontsize changes.
+        lw = fontsize * 2.5
+        base_figsize = _base_schedule_figsize(len(self.faculty), self.context.number_time_slots, lw, tight=tight)
+        worst_labels = {label for *_, label in boxes if label}
+        if worst_labels:
+            figsize = _fit_schedule_figsize(
+                base_figsize=base_figsize,
+                nslots=self.context.number_time_slots,
+                time_labels=self.context.times_by_building,
+                min_duration_minutes=min(stop - start for _, start, stop, _, label in boxes if label),
+                worst_labels=worst_labels,
+                fontsize=fontsize,
+            )
+        else:
+            figsize = base_figsize
+
+        ax = schedule_axes(
+            figsize=figsize,
+            nslots=self.context.number_time_slots,
+            time_labels=self.context.times_by_building,
+        )
+        ax.set_yticks(yticks, labels=ylabels)
+        for f, ytick_label in zip(self.faculty, ax.get_yticklabels()):
+            if self.context.is_legacy(f):
+                ytick_label.set_color("red")
+        for y in yticks:
+            ax.axhline(y, lw=0.4, alpha=0.3, color="b")
+
+        for y, start, stop, bldg, label in boxes:
+            ax.plot(
+                [start, stop],
+                [-y, -y],
+                lw=lw,
+                color=self.context.box_colors.get(bldg, "#cccccc"),
+                alpha=BOX_ALPHA,
+                solid_capstyle="butt",
+            )
+            if label:
+                ax.text((start + stop) / 2, -y, label, ha="center", va="center", fontsize=fontsize)
 
         title = "Schedule by Faculty"
         if show_solution_rank:
@@ -520,8 +644,10 @@ class SolutionResult:
         ax.set_title(title)
         if save_files:
             name = self._schedule_filename("faculty_schedule", include_rank=include_rank_in_filename)
-            plt.savefig(name + ".pdf")
-            plt.savefig(name + ".png")
+            # bbox_inches="tight" re-crops to the actual rendered content, so
+            # a short (e.g. tight=True) figure never clips its x-axis label.
+            plt.savefig(name + ".pdf", bbox_inches="tight")
+            plt.savefig(name + ".png", bbox_inches="tight")
             return (name + ".png", name + ".pdf")
         return None
 
@@ -531,20 +657,14 @@ class SolutionResult:
         abbreviate_student_names=True,
         show_solution_rank=False,
         include_rank_in_filename=True,
+        fontsize=8,
+        tight=False,
     ):
         """Plot schedule grouped by visitor for this single solution."""
-        ax = schedule_axes(
-            figsize=(12, 10),
-            nslots=self.context.number_time_slots,
-            time_labels=self.context.times_by_building,
-        )
         show_building_labels = self._show_building_labels()
         students = [abbreviate_name(s) if abbreviate_student_names else s for s in self.visitors]
-        yticks = [-y for y, _ in enumerate(students)]
-        ax.set_yticks(yticks, labels=students)
-        for y in yticks:
-            ax.axhline(y, lw=0.4, alpha=0.3, color="b")
 
+        boxes = []
         for y, s in enumerate(self.visitors):
             for t in self.time_slots:
                 matched = [f for f in self.faculty if self.meeting_assigned(s, f, t)]
@@ -553,17 +673,46 @@ class SolutionResult:
                 f = matched[0]
                 bldg = self.context.faculty[f]["building"]
                 start, stop = slot2min(self.context.times_by_building[bldg][t - 1])
-                ax.plot(
-                    [start, stop],
-                    [-y, -y],
-                    lw=20,
-                    color=self.context.box_colors.get(bldg, "#cccccc"),
-                    alpha=BOX_ALPHA,
-                    solid_capstyle="butt",
-                )
                 text_color = "red" if self.context.is_legacy(f) else "black"
                 label = f"{f} ({bldg})" if show_building_labels else f"{f}"
-                ax.text((start + stop) / 2, -y, label, ha="center", va="center", fontsize=8, color=text_color)
+                boxes.append((y, start, stop, bldg, label, text_color))
+
+        # Box height (lw) is derived from fontsize -- rather than set
+        # independently -- so the two stay in proportion as fontsize changes.
+        lw = fontsize * 2.5
+        base_figsize = _base_schedule_figsize(len(self.visitors), self.context.number_time_slots, lw, tight=tight)
+        if boxes:
+            figsize = _fit_schedule_figsize(
+                base_figsize=base_figsize,
+                nslots=self.context.number_time_slots,
+                time_labels=self.context.times_by_building,
+                min_duration_minutes=min(stop - start for _, start, stop, _, _, _ in boxes),
+                worst_labels={label for _, _, _, _, label, _ in boxes},
+                fontsize=fontsize,
+            )
+        else:
+            figsize = base_figsize
+
+        ax = schedule_axes(
+            figsize=figsize,
+            nslots=self.context.number_time_slots,
+            time_labels=self.context.times_by_building,
+        )
+        yticks = [-y for y, _ in enumerate(students)]
+        ax.set_yticks(yticks, labels=students)
+        for y in yticks:
+            ax.axhline(y, lw=0.4, alpha=0.3, color="b")
+
+        for y, start, stop, bldg, label, text_color in boxes:
+            ax.plot(
+                [start, stop],
+                [-y, -y],
+                lw=lw,
+                color=self.context.box_colors.get(bldg, "#cccccc"),
+                alpha=BOX_ALPHA,
+                solid_capstyle="butt",
+            )
+            ax.text((start + stop) / 2, -y, label, ha="center", va="center", fontsize=fontsize, color=text_color)
 
         title = "Schedule by Visitors"
         if show_solution_rank:
@@ -571,8 +720,10 @@ class SolutionResult:
         ax.set_title(title)
         if save_files:
             name = self._schedule_filename("visitor_schedule", include_rank=include_rank_in_filename)
-            plt.savefig(name + ".pdf")
-            plt.savefig(name + ".png")
+            # bbox_inches="tight" re-crops to the actual rendered content, so
+            # a short (e.g. tight=True) figure never clips its x-axis label.
+            plt.savefig(name + ".pdf", bbox_inches="tight")
+            plt.savefig(name + ".png", bbox_inches="tight")
             return (name + ".png", name + ".pdf")
         return None
 
