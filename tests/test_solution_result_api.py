@@ -519,6 +519,85 @@ def test_plot_schedule_tight_option_shrinks_height_without_overrun_or_collision(
         plt.close(tight_fig)
 
 
+def test_fit_schedule_figsize_guards_against_empty_or_degenerate_input():
+    """``_fit_schedule_figsize`` should no-op when there's nothing to fit against.
+
+    Both plotting methods only call it when there's at least one label and a
+    positive slot duration, so these guards are otherwise unreachable through
+    the public API -- exercise them directly as a unit test.
+    """
+    base_figsize = (6.0, 4.0)
+    time_labels = {"NSH": ("1:00 PM-1:25 PM",)}
+
+    # No candidate labels to measure -> nothing to fit against.
+    assert core_mod._fit_schedule_figsize(
+        base_figsize=base_figsize,
+        nslots=1,
+        time_labels=time_labels,
+        min_duration_minutes=25,
+        worst_labels=set(),
+        fontsize=8,
+    ) == base_figsize
+
+    # Degenerate (zero-length) slot duration -> box width isn't computable.
+    assert core_mod._fit_schedule_figsize(
+        base_figsize=base_figsize,
+        nslots=1,
+        time_labels=time_labels,
+        min_duration_minutes=0,
+        worst_labels={"Some Faculty"},
+        fontsize=8,
+    ) == base_figsize
+
+
+def test_plot_schedules_fall_back_to_base_figsize_with_no_active_meetings():
+    """Cover the empty-schedule fallback path (no worst-case label to fit against).
+
+    When nothing is actually drawn -- no visitor has any assigned meeting --
+    both plot methods should skip the label-fitting pass entirely and use
+    the row/slot-driven base figsize as-is.
+    """
+    faculty_names = ["Faculty A", "Faculty B"]
+    num_slots = 2
+    slot_labels = tuple(f"{h}:00 PM-{h}:25 PM" for h in range(1, 1 + num_slots))
+    context = core_mod.SolutionContext(
+        times_by_building={"NSH": slot_labels},
+        faculty={
+            name: {"building": "NSH", "room": "", "avail": tuple(range(1, num_slots + 1)), "areas": ()}
+            for name in faculty_names
+        },
+        box_colors={"NSH": "#8ecae6"},
+        number_time_slots=num_slots,
+        run_name="",
+        student_preferences={},
+        requests={},
+        legacy_faculty=frozenset(),
+        external_faculty=frozenset(),
+    )
+    sol = core_mod.SolutionResult(
+        rank=1,
+        objective_value=0.0,
+        termination_condition="optimal",
+        solver_status="ok",
+        visitors=("Visitor 01", "Visitor 02"),
+        faculty=tuple(faculty_names),
+        time_slots=tuple(range(1, num_slots + 1)),
+        active_meetings=frozenset(),
+        context=context,
+    )
+
+    lw = 8 * 2.5
+    expected_visitor_figsize = core_mod._base_schedule_figsize(len(sol.visitors), num_slots, lw)
+    sol.plot_visitor_schedule(save_files=False)
+    assert plt.gcf().get_size_inches() == pytest.approx(expected_visitor_figsize)
+    plt.close(plt.gcf())
+
+    expected_faculty_figsize = core_mod._base_schedule_figsize(len(sol.faculty), num_slots, lw)
+    sol.plot_faculty_schedule(save_files=False)
+    assert plt.gcf().get_size_inches() == pytest.approx(expected_faculty_figsize)
+    plt.close(plt.gcf())
+
+
 @pytest.mark.skipif(not _solver_available("highs"), reason="HiGHS solver unavailable")
 def test_modern_single_solution_workflow_has_no_legacy_futurewarnings(tmp_path: Path):
     """Modern single-solve workflow should avoid legacy wrapper warnings."""
