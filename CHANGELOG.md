@@ -6,6 +6,28 @@ This project follows a simple *Keep a Changelog* style and uses semantic version
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-04
+
+### Fixed
+- Faculty/visitor labels in `plot_visitor_schedule(...)` and
+  `plot_faculty_schedule(...)` could render wider than their drawn schedule
+  box for longer names or larger fontsizes, since box width, box height, and
+  label text had no relationship to one another. Figure size is now computed
+  from actual content (row count, time-slot count, and a dry-run
+  text-measurement pass against the worst-case label) instead of a fixed
+  `figsize=(12, 10)` constant, and box height (`lw`) is now derived from
+  `fontsize` instead of set independently.
+- Schedules with fewer visitors/faculty rows no longer inherit the same tall
+  figure as a dense schedule; figure height now scales with row count.
+
+### Added
+- `plot_visitor_schedule(...)` and `plot_faculty_schedule(...)` now accept a
+  `fontsize` keyword argument (default `8`, matching prior behavior).
+- `plot_visitor_schedule(...)` and `plot_faculty_schedule(...)` now accept a
+  `tight` keyword argument; `tight=True` significantly reduces vertical
+  whitespace between schedule rows for callers who prefer a more compact
+  layout over generous row spacing.
+
 ## [0.5.0] - 2026-03-11
 
 ### Added
